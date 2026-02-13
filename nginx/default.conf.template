@@ -1,0 +1,543 @@
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  '' close;
+}
+
+map $http_accept_language $edge_locale {
+  default ${EDGE_DEFAULT_LOCALE};
+  ~*^ru ru;
+  ~*^be be;
+  ~*^nl nl;
+  ~*^uk uk;
+  ~*^pl pl;
+  ~*^de de;
+  ~*^ro ro;
+  ~*^en en;
+}
+
+map $http_accept_language $strings_locale {
+  default ${EDGE_DEFAULT_LOCALE};
+  ~*^ru ru;
+  ~*^be be;
+  ~*^nl nl;
+  ~*^uk uk;
+  ~*^pl pl;
+  ~*^de de;
+  ~*^ro ro;
+  ~*^en en;
+}
+
+map "" $admin_ui {
+  default "${ADMIN_UI}";
+}
+
+map $admin_ui $db_admin_upstream {
+  default "pgweb:8081";
+  pgweb "pgweb:8081";
+  pgadmin "pgadmin:80";
+}
+
+map "" $logs_ui_upstream {
+  default "${LOGS_UI_UPSTREAM}";
+}
+
+geo $edge_is_vpn {
+  default 0;
+  ${VPN_CIDR} 1;
+}
+
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=${EDGE_RATE_LIMIT_RPS};
+
+log_format edge_json escape=json
+  '{"time":"$time_iso8601","remote_addr":"$remote_addr","request_id":"$request_id",'
+  '"method":"$request_method","uri":"$request_uri","status":$status,'
+  '"bytes_sent":$bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent",'
+  '"request_time":$request_time,"upstream":"$upstream_addr","upstream_status":"$upstream_status"}';
+
+access_log /var/log/nginx/access.log edge_json;
+access_log /dev/stdout edge_json;
+error_log /var/log/nginx/error.log warn;
+error_log /dev/stderr warn;
+
+server {
+  listen 80;
+  server_name _;
+
+  location /.well-known/acme-challenge/ {
+    root /var/www/certbot;
+  }
+
+  location = /healthz {
+    access_log off;
+    add_header Content-Type text/plain;
+    return 200 "ok\n";
+  }
+
+  location / {
+    return 301 https://$host$request_uri;
+  }
+}
+
+server {
+  listen 443 ssl;
+  server_name _;
+  resolver 127.0.0.11 ipv6=off valid=10s;
+
+  ssl_certificate /etc/letsencrypt/live/${EDGE_TLS_DOMAIN}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${EDGE_TLS_DOMAIN}/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_prefer_server_ciphers off;
+  ssl_session_cache shared:SSL:10m;
+  ssl_session_timeout 10m;
+
+  client_max_body_size ${EDGE_CLIENT_MAX_BODY_SIZE};
+
+  add_header X-Frame-Options "DENY" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+  error_page 403 /errors/403.html;
+  error_page 404 /errors/404.html;
+  error_page 500 /errors/500.html;
+  error_page 502 /errors/502.html;
+  error_page 503 /errors/503.html;
+  error_page 504 /errors/504.html;
+
+  # Error HTML pages are internal, but their assets (css/js) must be public.
+  location = /errors/403.html { root /usr/share/nginx/html; internal; }
+  location = /errors/404.html { root /usr/share/nginx/html; internal; }
+  location = /errors/500.html { root /usr/share/nginx/html; internal; }
+  location = /errors/502.html { root /usr/share/nginx/html; internal; }
+  location = /errors/503.html { root /usr/share/nginx/html; internal; }
+  location = /errors/504.html { root /usr/share/nginx/html; internal; }
+  location ^~ /errors/ { root /usr/share/nginx/html; }
+
+  location = /__edge_404 {
+    internal;
+    try_files /__edge_missing__ =404;
+  }
+
+  # Avoid leaking Authelia favicon to the whole origin.
+  location = /favicon.ico {
+    access_log off;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    return 204;
+  }
+
+  location = /favicon.png {
+    access_log off;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    return 204;
+  }
+
+  location = /apple-touch-icon.png {
+    access_log off;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    return 204;
+  }
+
+  location ~* ^/tools/[^/]+/favicon\.(ico|png)$ {
+    access_log off;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    return 204;
+  }
+
+  location = /healthz {
+    access_log off;
+    add_header Content-Type text/plain;
+    return 200 "ok\n";
+  }
+
+  location ~* ^/(postgres|pg|valkey|redis|minio|s3)(/|$) {
+    access_log off;
+    return 404;
+  }
+
+  location = /tools {
+    return 301 /tools/;
+  }
+
+  location = /tools/ {
+    set $target_url $scheme://$http_host$request_uri;
+    auth_request /internal/authelia/authz;
+    error_page 401 = @authelia_signin;
+    error_page 403 = @authelia_signin;
+
+    root /usr/share/nginx/html;
+    try_files /tools/index.html =404;
+  }
+
+  location @authelia_signin {
+    return 302 /authelia/?rd=$target_url;
+  }
+
+  # Authelia portal must be reachable without VPN so users can login/2FA and reach wg-ui.
+  location ^~ /authelia/api/ {
+    proxy_pass http://authelia:9091/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location ^~ /authelia/static/ {
+    proxy_pass http://authelia:9091/static/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location = /authelia/manifest.json {
+    proxy_pass http://authelia:9091/manifest.json;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location ^~ /authelia/locales/ {
+    proxy_pass http://authelia:9091/locales/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location /authelia/ {
+    proxy_pass http://authelia:9091/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Prefix /authelia;
+    proxy_set_header X-Forwarded-Uri $request_uri;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Connection "";
+    proxy_set_header Accept-Encoding "";
+    sub_filter_once on;
+    sub_filter_types text/html;
+    sub_filter 'data-basepath=""' 'data-basepath="/authelia"';
+    sub_filter 'href="/static/' 'href="/authelia/static/';
+    sub_filter 'src="/static/' 'src="/authelia/static/';
+    sub_filter 'href="/manifest.json"' 'href="/authelia/manifest.json"';
+    sub_filter 'href="/locales/' 'href="/authelia/locales/';
+  }
+
+  # Authelia frontend uses absolute paths (/static, /api, /locales, /manifest.json).
+  # We proxy them at root to make /authelia/ work reliably.
+  location ^~ /static/ {
+    proxy_pass http://authelia:9091/static/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location = /manifest.json {
+    proxy_pass http://authelia:9091/manifest.json;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location ^~ /locales/ {
+    proxy_pass http://authelia:9091/locales/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location /auth/ {
+    return 301 /authelia/$is_args$args;
+  }
+
+  location = /authelia-unavailable {
+    return 503;
+  }
+
+  location ~ ^/(2fa|one-time-password|first-factor|second-factor|consent|logout|reset-password|totp)(/|$) {
+    return 302 /authelia$uri$is_args$args;
+  }
+
+  location = /internal/authelia/authz {
+    internal;
+    proxy_pass http://authelia:9091/api/authz/auth-request;
+    proxy_set_header Host $host;
+    proxy_set_header X-Original-Method $request_method;
+    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $http_host;
+    proxy_set_header X-Forwarded-Uri $request_uri;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Content-Length "";
+    proxy_pass_request_body off;
+  }
+
+  # wg-ui is allowed without VPN, but still requires Authelia (2FA).
+  location /tools/wireguard/ {
+
+    set $target_url $scheme://$http_host$request_uri;
+    auth_request /internal/authelia/authz;
+    error_page 401 = @authelia_signin;
+    error_page 403 = @authelia_signin;
+
+    rewrite ^/tools/wireguard/(.*)$ /$1 break;
+    proxy_pass http://wireguard:51821/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+    proxy_set_header Accept-Encoding "";
+    sub_filter_once on;
+    sub_filter_types text/html;
+    sub_filter '<base href="/">' '<base href="/tools/wireguard/">';
+    sub_filter 'src="/static/' 'src="/tools/wireguard/static/';
+    sub_filter 'href="/static/' 'href="/tools/wireguard/static/';
+    sub_filter 'href="/favicon.ico"' 'href="/tools/wireguard/favicon.ico"';
+  }
+
+  location = /strings/auto.json {
+    root /usr/share/nginx/html;
+    try_files /strings/$strings_locale.json /strings/en.json =404;
+  }
+
+  location /strings/ {
+    root /usr/share/nginx/html;
+    try_files $uri =404;
+  }
+
+  location /tools/minio/ws/ {
+    if ($edge_is_vpn = 0) { rewrite ^ /__edge_404 last; }
+
+    set $target_url $scheme://$http_host$request_uri;
+    auth_request /internal/authelia/authz;
+    error_page 401 = @authelia_signin;
+    error_page 403 = @authelia_signin;
+
+    rewrite ^/tools/minio/(.*)$ /$1 break;
+    proxy_pass http://minio:9001/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+  }
+
+  location /tools/minio/ {
+    if ($edge_is_vpn = 0) { rewrite ^ /__edge_404 last; }
+
+    set $target_url $scheme://$http_host$request_uri;
+    auth_request /internal/authelia/authz;
+    error_page 401 = @authelia_signin;
+    error_page 403 = @authelia_signin;
+
+    rewrite ^/tools/minio/(.*)$ /$1 break;
+    proxy_pass http://minio:9001/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+    proxy_set_header Accept-Encoding "";
+    sub_filter_once on;
+    sub_filter_types *;
+    sub_filter '<base href="/"/>' '<base href="/tools/minio/"/>';
+  }
+
+  location ^~ /tools/pgadmin/ {
+    return 301 /tools/db/;
+  }
+
+  location /tools/db/ {
+    if ($edge_is_vpn = 0) { rewrite ^ /__edge_404 last; }
+
+    set $target_url $scheme://$http_host$request_uri;
+    auth_request /internal/authelia/authz;
+    error_page 401 = @authelia_signin;
+    error_page 403 = @authelia_signin;
+
+    proxy_pass http://$db_admin_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location /tools/logs/ {
+    if ($edge_is_vpn = 0) { rewrite ^ /__edge_404 last; }
+
+    set $target_url $scheme://$http_host$request_uri;
+    auth_request /internal/authelia/authz;
+    error_page 401 = @authelia_signin;
+    error_page 403 = @authelia_signin;
+
+    proxy_pass http://$logs_ui_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+  }
+
+  location /api/private/ {
+    proxy_pass http://${BACKEND_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Request-ID $request_id;
+    proxy_set_header X-Client-Locale $edge_locale;
+    limit_req zone=api_limit burst=${EDGE_RATE_LIMIT_BURST} nodelay;
+  }
+
+  location /api/public/ {
+    proxy_pass http://${BACKEND_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Request-ID $request_id;
+    proxy_set_header X-Client-Locale $edge_locale;
+    limit_req zone=api_limit burst=${EDGE_RATE_LIMIT_BURST} nodelay;
+  }
+
+  # Authelia portal API endpoints (/api/state, /api/firstfactor, etc.).
+  # More specific backend routes (/api/private, /api/public) are matched first.
+  location ^~ /api/ {
+    proxy_pass http://authelia:9091/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location /ws/ {
+    proxy_pass http://${BACKEND_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Request-ID $request_id;
+    proxy_set_header X-Client-Locale $edge_locale;
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout ${EDGE_WS_READ_TIMEOUT};
+  }
+
+  location /site/ {
+    proxy_pass http://${SITE_UPSTREAM}/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Client-Locale $edge_locale;
+  }
+
+  location / {
+    proxy_pass http://${APP_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Client-Locale $edge_locale;
+  }
+}
+
+server {
+  listen 9443 ssl;
+  server_name _;
+
+  ssl_certificate /etc/letsencrypt/live/${EDGE_TLS_DOMAIN}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${EDGE_TLS_DOMAIN}/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+
+  error_page 403 /errors/403.html;
+  error_page 404 /errors/404.html;
+  error_page 500 /errors/500.html;
+  error_page 502 /errors/502.html;
+  error_page 503 /errors/503.html;
+  error_page 504 /errors/504.html;
+
+  location = /errors/403.html { root /usr/share/nginx/html; internal; }
+  location = /errors/404.html { root /usr/share/nginx/html; internal; }
+  location = /errors/500.html { root /usr/share/nginx/html; internal; }
+  location = /errors/502.html { root /usr/share/nginx/html; internal; }
+  location = /errors/503.html { root /usr/share/nginx/html; internal; }
+  location = /errors/504.html { root /usr/share/nginx/html; internal; }
+  location ^~ /errors/ { root /usr/share/nginx/html; }
+
+  location = /__edge_404 {
+    internal;
+    try_files /__edge_missing__ =404;
+  }
+
+  location = /favicon.ico {
+    access_log off;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    return 204;
+  }
+
+  location = /favicon.png {
+    access_log off;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    return 204;
+  }
+
+  location = /apple-touch-icon.png {
+    access_log off;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    return 204;
+  }
+
+  location / {
+    allow ${VPN_CIDR};
+    allow ${VPN_DOCKER_CIDR};
+
+    deny all;
+
+    proxy_pass http://minio:9001/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+  }
+}

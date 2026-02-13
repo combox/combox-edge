@@ -1,0 +1,56 @@
+{
+  "project": {
+    "name": "chat-edge",
+    "description": "Stratul edge al infrastructurii de chat"
+  },
+  "services": {
+    "nginx": "Nginx Edge Proxy",
+    "postgres": "PostgreSQL",
+    "valkey": "Valkey",
+    "minio": "MinIO",
+    "minio_init": "Initializare MinIO"
+  },
+  "routes": {
+    "health": "Verificare stare",
+    "private_api": "API privat",
+    "public_api": "API public",
+    "websocket": "Gateway WebSocket",
+    "app": "Aplicatia client",
+    "site": "Site public"
+  },
+  "status": {
+    "ok": "OK",
+    "healthy": "Sanatos",
+    "degraded": "Degradat",
+    "down": "Indisponibil"
+  },
+  "logs": {
+    "edge_started": "Edge pornit",
+    "config_loaded": "Configuratie incarcata",
+    "upstream_unavailable": "Upstream indisponibil",
+    "rate_limit_exceeded": "Limita de cereri depasita"
+  },
+  "errors": {
+    "not_found": "Negasit",
+    "forbidden": "Interzis",
+    "bad_gateway": "Bad Gateway",
+    "gateway_timeout": "Timeout gateway",
+    "service_unavailable": "Serviciu temporar indisponibil",
+    "internal_error": "Eroare interna edge"
+  },
+  "tools": {
+    "home": {
+      "title": "Instrumente Chat Edge",
+      "subtitle": "Acces rapid la instrumentele infrastructurii protejate prin politica VPN.",
+      "db_name": "Administrare bază de date",
+      "db_desc": "Interfață de administrare PostgreSQL",
+      "minio_name": "Consolă MinIO",
+      "minio_desc": "Bucket-uri și obiecte S3",
+      "wireguard_name": "Interfață WireGuard",
+      "wireguard_desc": "Peer-uri VPN și configurații",
+      "logs_name": "Loguri containere",
+      "logs_desc": "Tablou de loguri Dozzle",
+      "note": "Dacă un instrument nu este disponibil, verifică starea containerelor și profilul de admin selectat."
+    }
+  }
+}

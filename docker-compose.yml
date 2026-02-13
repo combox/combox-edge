@@ -1,0 +1,296 @@
+name: chat-edge
+
+services:
+  strings-validate:
+    image: python:3.12-alpine
+    container_name: chat-strings-validate
+    working_dir: /workspace
+    command: ["python", "scripts/validate_strings.py"]
+    volumes:
+      - ./:/workspace:ro
+    restart: "no"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: chat-edge-nginx
+    restart: unless-stopped
+    depends_on:
+      strings-validate:
+        condition: service_completed_successfully
+      tls-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_started
+      valkey:
+        condition: service_started
+      minio:
+        condition: service_started
+      logs-ui:
+        condition: service_started
+      authelia:
+        condition: service_started
+    ports:
+      - "${EDGE_BIND_IP:-0.0.0.0}:${EDGE_HTTP_PORT:-80}:80"
+      - "${EDGE_BIND_IP:-0.0.0.0}:${EDGE_HTTPS_PORT:-443}:443"
+      - "${EDGE_BIND_IP:-0.0.0.0}:${EDGE_TOOLS_HTTPS_PORT:-9443}:9443"
+    environment:
+      BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-chat-backend:8080}
+      APP_UPSTREAM: ${APP_UPSTREAM:-chat-app:4173}
+      SITE_UPSTREAM: ${SITE_UPSTREAM:-host.docker.internal:3001}
+      EDGE_CLIENT_MAX_BODY_SIZE: ${EDGE_CLIENT_MAX_BODY_SIZE:-25m}
+      EDGE_WS_READ_TIMEOUT: ${EDGE_WS_READ_TIMEOUT:-3600s}
+      EDGE_RATE_LIMIT_RPS: ${EDGE_RATE_LIMIT_RPS:-30r/s}
+      EDGE_RATE_LIMIT_BURST: ${EDGE_RATE_LIMIT_BURST:-60}
+      EDGE_DEFAULT_LOCALE: ${EDGE_DEFAULT_LOCALE:-en}
+      EDGE_TLS_DOMAIN: ${EDGE_TLS_DOMAIN:-localhost}
+      VPN_CIDR: ${VPN_CIDR:-10.8.0.0/24}
+      VPN_DOCKER_CIDR: ${VPN_DOCKER_CIDR:-172.18.0.0/16}
+      ADMIN_UI: ${ADMIN_UI:-pgweb}
+      LOGS_UI_UPSTREAM: ${LOGS_UI_UPSTREAM:-logs-ui:8080}
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/run-nginx.sh:/usr/local/bin/run-nginx.sh:ro
+      - ./nginx/tools:/usr/share/nginx/html/tools:ro
+      - ./nginx/errors:/usr/share/nginx/html/errors:ro
+      - ./strings:/usr/share/nginx/html/strings:ro
+      - certbot_www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+      - nginx_logs:/var/log/nginx
+    entrypoint: ["/bin/sh", "/usr/local/bin/run-nginx.sh"]
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  tls-init:
+    image: alpine:3.21
+    container_name: chat-edge-tls-init
+    restart: "no"
+    environment:
+      EDGE_TLS_DOMAIN: ${EDGE_TLS_DOMAIN:-localhost}
+    command:
+      - /bin/sh
+      - -c
+      - apk add --no-cache openssl >/dev/null && /bin/sh /init/init-self-signed.sh
+    volumes:
+      - ./scripts/init-self-signed.sh:/init/init-self-signed.sh:ro
+      - letsencrypt:/etc/letsencrypt
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: chat-edge-certbot
+    profiles: ["public-tls"]
+    restart: unless-stopped
+    depends_on:
+      strings-validate:
+        condition: service_completed_successfully
+      nginx:
+        condition: service_started
+      tls-init:
+        condition: service_completed_successfully
+    environment:
+      EDGE_TLS_DOMAIN: ${EDGE_TLS_DOMAIN:-localhost}
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:-admin@localhost}
+      CERTBOT_STAGING: ${CERTBOT_STAGING:-1}
+    entrypoint: ["/bin/sh", "/certbot/auto-renew.sh"]
+    volumes:
+      - ./scripts/certbot-auto-renew.sh:/certbot/auto-renew.sh:ro
+      - certbot_www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+
+  wireguard:
+    image: ghcr.io/wg-easy/wg-easy:latest
+    container_name: chat-edge-wireguard
+    restart: unless-stopped
+    depends_on:
+      strings-validate:
+        condition: service_completed_successfully
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      WG_HOST: ${WG_HOST:-127.0.0.1}
+      PASSWORD_HASH: ${WG_PASSWORD_HASH:-$$2a$$10$$lmTFAy0CNSbkYIPLQveYHOMEJKWgUQTIwwsoBdTAtxR1rZHMs10v.}
+      WG_PORT: ${WG_PORT:-51820}
+      WG_DEFAULT_ADDRESS: ${WG_DEFAULT_ADDRESS:-10.8.0.x}
+      WG_DEFAULT_DNS: ${WG_DEFAULT_DNS:-1.1.1.1}
+      WG_ALLOWED_IPS: ${WG_ALLOWED_IPS:-10.8.0.0/24}
+      WG_PERSISTENT_KEEPALIVE: ${WG_PERSISTENT_KEEPALIVE:-25}
+      WG_DEVICE: ${WG_DEVICE:-eth0}
+      PORT: ${WG_UI_PORT_INTERNAL:-51821}
+    ports:
+      - "${EDGE_BIND_IP:-0.0.0.0}:${WG_PORT:-51820}:51820/udp"
+    volumes:
+      - wireguard_data:/etc/wireguard
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+
+  authelia:
+    image: authelia/authelia:latest
+    container_name: chat-edge-authelia
+    restart: unless-stopped
+    depends_on:
+      strings-validate:
+        condition: service_completed_successfully
+    env_file:
+      - ./.env
+    volumes:
+      - ./authelia/configuration.template.yml:/config/configuration.template.yml:ro
+      - ./authelia/users_database.template.yml:/config/users_database.template.yml:ro
+      - ./authelia/run-authelia.sh:/config/run-authelia.sh:ro
+      - authelia_data:/data
+    entrypoint: ["/bin/sh", "/config/run-authelia.sh"]
+
+  pgweb:
+    image: sosedoff/pgweb:latest
+    container_name: chat-pgweb
+    profiles: ["admin-pgweb"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_started
+    command:
+      - /usr/bin/pgweb
+      - --bind=0.0.0.0
+      - --listen=8081
+      - --prefix=tools/db
+      - --host=postgres
+      - --port=5432
+      - --user=${POSTGRES_USER:-chat}
+      - --pass=${POSTGRES_PASSWORD:-chat_local_password}
+      - --db=${POSTGRES_DB:-chat}
+      - --ssl=disable
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: chat-pgadmin
+    profiles: ["admin-pgadmin"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_started
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@chat.example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-change_me}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: ${PGADMIN_MASTER_PASSWORD_REQUIRED:-False}
+      PGADMIN_LISTEN_ADDRESS: 0.0.0.0
+      PGADMIN_LISTEN_PORT: 80
+      SCRIPT_NAME: /tools/db
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./postgres/pgadmin/servers.json:/pgadmin4/servers.json:ro
+
+  logs-ui:
+    image: amir20/dozzle:latest
+    container_name: chat-logs-ui
+    restart: unless-stopped
+    environment:
+      DOZZLE_NO_ANALYTICS: "true"
+      DOZZLE_BASE: /tools/logs
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: chat-postgres
+    restart: unless-stopped
+    depends_on:
+      strings-validate:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chat}
+      POSTGRES_USER: ${POSTGRES_USER:-chat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chat_local_password}
+    expose:
+      - "5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chat} -d ${POSTGRES_DB:-chat}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: chat-valkey
+    restart: unless-stopped
+    depends_on:
+      strings-validate:
+        condition: service_completed_successfully
+    command: ["valkey-server", "/etc/valkey/valkey.conf"]
+    expose:
+      - "6379"
+    volumes:
+      - valkey_data:/data
+      - ./valkey/valkey.conf:/etc/valkey/valkey.conf:ro
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: chat-minio
+    restart: unless-stopped
+    depends_on:
+      strings-validate:
+        condition: service_completed_successfully
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    command: server /data --console-address ":9001"
+    expose:
+      - "9000"
+      - "9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: chat-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_BUCKET: ${MINIO_BUCKET:-chat-media}
+      MINIO_API_INTERNAL: ${MINIO_API_INTERNAL:-http://minio:9000}
+    entrypoint: ["/bin/sh", "/init/create-bucket.sh"]
+    volumes:
+      - ./minio/init/create-bucket.sh:/init/create-bucket.sh:ro
+
+volumes:
+  postgres_data:
+  valkey_data:
+  minio_data:
+  pgadmin_data:
+  nginx_logs:
+  certbot_www:
+  letsencrypt:
+  wireguard_data:
+  authelia_data:
+
+networks:
+  default:
+    name: chat-edge-core

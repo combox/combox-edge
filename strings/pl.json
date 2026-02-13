@@ -1,0 +1,56 @@
+{
+  "project": {
+    "name": "chat-edge",
+    "description": "Warstwa brzegowa infrastruktury czatu"
+  },
+  "services": {
+    "nginx": "Nginx Edge Proxy",
+    "postgres": "PostgreSQL",
+    "valkey": "Valkey",
+    "minio": "MinIO",
+    "minio_init": "Inicjalizacja MinIO"
+  },
+  "routes": {
+    "health": "Kontrola zdrowia",
+    "private_api": "Prywatne API",
+    "public_api": "Publiczne API",
+    "websocket": "Brama WebSocket",
+    "app": "Aplikacja kliencka",
+    "site": "Strona publiczna"
+  },
+  "status": {
+    "ok": "OK",
+    "healthy": "Dziala",
+    "degraded": "Ograniczona dostepnosc",
+    "down": "Niedostepny"
+  },
+  "logs": {
+    "edge_started": "Edge uruchomiony",
+    "config_loaded": "Konfiguracja zaladowana",
+    "upstream_unavailable": "Upstream niedostepny",
+    "rate_limit_exceeded": "Przekroczono limit zapytan"
+  },
+  "errors": {
+    "not_found": "Nie znaleziono",
+    "forbidden": "Dostep zabroniony",
+    "bad_gateway": "Bledna brama",
+    "gateway_timeout": "Przekroczono limit czasu bramy",
+    "service_unavailable": "Usluga tymczasowo niedostepna",
+    "internal_error": "Wewnetrzny blad edge"
+  },
+  "tools": {
+    "home": {
+      "title": "Narzędzia Chat Edge",
+      "subtitle": "Szybki dostęp do narzędzi infrastruktury za polityką VPN.",
+      "db_name": "Panel bazy danych",
+      "db_desc": "Interfejs zarządzania PostgreSQL",
+      "minio_name": "Konsola MinIO",
+      "minio_desc": "Buckety i obiekty S3",
+      "wireguard_name": "Interfejs WireGuard",
+      "wireguard_desc": "Peery VPN i konfiguracje",
+      "logs_name": "Logi kontenerów",
+      "logs_desc": "Panel logów Dozzle",
+      "note": "Jeśli narzędzie jest niedostępne, sprawdź status kontenerów i wybrany profil admina."
+    }
+  }
+}

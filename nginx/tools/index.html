@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="tools.home.title"></title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1220;
+      --panel: #131d31;
+      --panel-border: #20304b;
+      --text: #e8eefc;
+      --muted: #9fb1d6;
+      --btn: #2c4c8f;
+      --btn-hover: #3a61b5;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 10% 0%, #1c2e53 0%, transparent 55%),
+        radial-gradient(900px 500px at 90% 100%, #213a66 0%, transparent 45%),
+        var(--bg);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: min(760px, 100%);
+      background: rgba(19, 29, 49, 0.9);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 24px;
+      backdrop-filter: blur(4px);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.2;
+    }
+
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    a.tool {
+      display: block;
+      text-decoration: none;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 14px;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    }
+
+    a.tool:hover {
+      transform: translateY(-2px);
+      background: #182743;
+      border-color: #3b5794;
+    }
+
+    .name {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .desc {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .note {
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1 data-i18n="tools.home.title"></h1>
+    <p data-i18n="tools.home.subtitle"></p>
+    <div class="grid">
+      <a class="tool" href="/tools/db/">
+        <div class="name" data-i18n="tools.home.db_name"></div>
+        <div class="desc" data-i18n="tools.home.db_desc"></div>
+      </a>
+      <a class="tool" href="/tools/minio/">
+        <div class="name" data-i18n="tools.home.minio_name"></div>
+        <div class="desc" data-i18n="tools.home.minio_desc"></div>
+      </a>
+      <a class="tool" href="/tools/wireguard/">
+        <div class="name" data-i18n="tools.home.wireguard_name"></div>
+        <div class="desc" data-i18n="tools.home.wireguard_desc"></div>
+      </a>
+      <a class="tool" href="/tools/logs/">
+        <div class="name" data-i18n="tools.home.logs_name"></div>
+        <div class="desc" data-i18n="tools.home.logs_desc"></div>
+      </a>
+    </div>
+    <div class="note" data-i18n="tools.home.note"></div>
+  </main>
+  <script>
+    (function () {
+      const getValue = (obj, path) =>
+        path.split(".").reduce((acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined), obj);
+
+      const applyStrings = (dict) => {
+        document.querySelectorAll("[data-i18n]").forEach((node) => {
+          const key = node.getAttribute("data-i18n");
+          const value = getValue(dict, key);
+          if (typeof value === "string") {
+            node.textContent = value;
+          }
+        });
+      };
+
+      fetch("/strings/auto.json", { cache: "no-cache" })
+        .then((res) => (res.ok ? res.json() : Promise.reject(new Error("auto_locale_not_found"))))
+        .then(applyStrings)
+        .catch(() =>
+          fetch("/strings/en.json", { cache: "no-cache" })
+            .then((res) => (res.ok ? res.json() : Promise.reject(new Error("fallback_not_found"))))
+            .then(applyStrings)
+        );
+    })();
+  </script>
+</body>
+</html>

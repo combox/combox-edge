@@ -1,0 +1,56 @@
+{
+  "project": {
+    "name": "chat-edge",
+    "description": "Randlaag van de chatinfrastructuur"
+  },
+  "services": {
+    "nginx": "Nginx Edge Proxy",
+    "postgres": "PostgreSQL",
+    "valkey": "Valkey",
+    "minio": "MinIO",
+    "minio_init": "MinIO Initialisatie"
+  },
+  "routes": {
+    "health": "Statuscontrole",
+    "private_api": "Privé API",
+    "public_api": "Publieke API",
+    "websocket": "WebSocket Gateway",
+    "app": "Client-app",
+    "site": "Publieke site"
+  },
+  "status": {
+    "ok": "OK",
+    "healthy": "Gezond",
+    "degraded": "Gedegradeerd",
+    "down": "Niet beschikbaar"
+  },
+  "logs": {
+    "edge_started": "Edge gestart",
+    "config_loaded": "Configuratie geladen",
+    "upstream_unavailable": "Upstream niet beschikbaar",
+    "rate_limit_exceeded": "Verzoeklimiet overschreden"
+  },
+  "errors": {
+    "not_found": "Niet gevonden",
+    "forbidden": "Verboden",
+    "bad_gateway": "Bad Gateway",
+    "gateway_timeout": "Gateway time-out",
+    "service_unavailable": "Service tijdelijk niet beschikbaar",
+    "internal_error": "Interne edge-fout"
+  },
+  "tools": {
+    "home": {
+      "title": "Chat Edge Tools",
+      "subtitle": "Snelle toegang tot infrastructuurtools achter VPN-beleid.",
+      "db_name": "Databasebeheer",
+      "db_desc": "PostgreSQL-beheerinterface",
+      "minio_name": "MinIO Console",
+      "minio_desc": "S3-buckets en objecten",
+      "wireguard_name": "WireGuard UI",
+      "wireguard_desc": "VPN-peers en configuraties",
+      "logs_name": "Containerlogs",
+      "logs_desc": "Dozzle-logdashboard",
+      "note": "Als een tool niet beschikbaar is, controleer containerstatus en geselecteerd adminprofiel."
+    }
+  }
+}

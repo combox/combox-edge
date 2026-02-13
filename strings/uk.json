@@ -1,0 +1,56 @@
+{
+  "project": {
+    "name": "chat-edge",
+    "description": "Крайовий шар інфраструктури чату"
+  },
+  "services": {
+    "nginx": "Nginx Edge Proxy",
+    "postgres": "PostgreSQL",
+    "valkey": "Valkey",
+    "minio": "MinIO",
+    "minio_init": "Ініціалізація MinIO"
+  },
+  "routes": {
+    "health": "Перевірка стану",
+    "private_api": "Приватний API",
+    "public_api": "Публічний API",
+    "websocket": "WebSocket Шлюз",
+    "app": "Клієнтський застосунок",
+    "site": "Публічний сайт"
+  },
+  "status": {
+    "ok": "OK",
+    "healthy": "Працює",
+    "degraded": "Частково доступний",
+    "down": "Недоступний"
+  },
+  "logs": {
+    "edge_started": "Edge запущено",
+    "config_loaded": "Конфігурацію завантажено",
+    "upstream_unavailable": "Upstream недоступний",
+    "rate_limit_exceeded": "Перевищено ліміт запитів"
+  },
+  "errors": {
+    "not_found": "Не знайдено",
+    "forbidden": "Доступ заборонено",
+    "bad_gateway": "Помилковий шлюз",
+    "gateway_timeout": "Тайм-аут шлюзу",
+    "service_unavailable": "Сервіс тимчасово недоступний",
+    "internal_error": "Внутрішня помилка edge"
+  },
+  "tools": {
+    "home": {
+      "title": "Інструменти Chat Edge",
+      "subtitle": "Швидкий доступ до інфраструктурних інструментів за VPN-політикою.",
+      "db_name": "Адмінка бази даних",
+      "db_desc": "Інтерфейс керування PostgreSQL",
+      "minio_name": "Консоль MinIO",
+      "minio_desc": "S3 бакети та об'єкти",
+      "wireguard_name": "Інтерфейс WireGuard",
+      "wireguard_desc": "VPN піри та конфігурації",
+      "logs_name": "Логи контейнерів",
+      "logs_desc": "Панель логів Dozzle",
+      "note": "Якщо інструмент недоступний, перевір статус контейнерів та вибраний профіль адмінки."
+    }
+  }
+}

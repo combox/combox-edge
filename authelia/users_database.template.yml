@@ -1,0 +1,6 @@
+  __AUTHELIA_ADMIN_USERNAME__:
+    displayname: "__AUTHELIA_ADMIN_DISPLAYNAME__"
+    password: "__AUTHELIA_ADMIN_PASSWORD_HASH__"
+    email: "__AUTHELIA_ADMIN_EMAIL__"
+    groups:
+      - admins

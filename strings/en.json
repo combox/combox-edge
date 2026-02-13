@@ -1,0 +1,56 @@
+{
+  "project": {
+    "name": "chat-edge",
+    "description": "Chat infrastructure edge layer"
+  },
+  "services": {
+    "nginx": "Nginx Edge Proxy",
+    "postgres": "PostgreSQL",
+    "valkey": "Valkey",
+    "minio": "MinIO",
+    "minio_init": "MinIO Initialization"
+  },
+  "routes": {
+    "health": "Health Check",
+    "private_api": "Private API",
+    "public_api": "Public API",
+    "websocket": "WebSocket Gateway",
+    "app": "Client App",
+    "site": "Public Site"
+  },
+  "status": {
+    "ok": "OK",
+    "healthy": "Healthy",
+    "degraded": "Degraded",
+    "down": "Down"
+  },
+  "logs": {
+    "edge_started": "Edge started",
+    "config_loaded": "Configuration loaded",
+    "upstream_unavailable": "Upstream unavailable",
+    "rate_limit_exceeded": "Rate limit exceeded"
+  },
+  "errors": {
+    "not_found": "Not Found",
+    "forbidden": "Forbidden",
+    "bad_gateway": "Bad Gateway",
+    "gateway_timeout": "Gateway Timeout",
+    "service_unavailable": "Service Temporarily Unavailable",
+    "internal_error": "Internal edge error"
+  },
+  "tools": {
+    "home": {
+      "title": "Chat Edge Tools",
+      "subtitle": "Quick access to infrastructure tools behind VPN policy.",
+      "db_name": "Database Admin",
+      "db_desc": "PostgreSQL management UI",
+      "minio_name": "MinIO Console",
+      "minio_desc": "S3 buckets and objects",
+      "wireguard_name": "WireGuard UI",
+      "wireguard_desc": "VPN peers and configurations",
+      "logs_name": "Container Logs",
+      "logs_desc": "Dozzle log dashboard",
+      "note": "If a tool is unavailable, check container status and selected admin profile."
+    }
+  }
+}

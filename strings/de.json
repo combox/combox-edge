@@ -1,0 +1,56 @@
+{
+  "project": {
+    "name": "chat-edge",
+    "description": "Edge-Schicht der Chat-Infrastruktur"
+  },
+  "services": {
+    "nginx": "Nginx Edge Proxy",
+    "postgres": "PostgreSQL",
+    "valkey": "Valkey",
+    "minio": "MinIO",
+    "minio_init": "MinIO Initialisierung"
+  },
+  "routes": {
+    "health": "Health-Check",
+    "private_api": "Privates API",
+    "public_api": "Offentliches API",
+    "websocket": "WebSocket Gateway",
+    "app": "Client-App",
+    "site": "Offentliche Website"
+  },
+  "status": {
+    "ok": "OK",
+    "healthy": "Gesund",
+    "degraded": "Eingeschrankt verfugbar",
+    "down": "Nicht verfugbar"
+  },
+  "logs": {
+    "edge_started": "Edge gestartet",
+    "config_loaded": "Konfiguration geladen",
+    "upstream_unavailable": "Upstream nicht verfugbar",
+    "rate_limit_exceeded": "Anfragelimit uberschritten"
+  },
+  "errors": {
+    "not_found": "Nicht gefunden",
+    "forbidden": "Verboten",
+    "bad_gateway": "Bad Gateway",
+    "gateway_timeout": "Gateway Zeituberschreitung",
+    "service_unavailable": "Dienst vorubergehend nicht verfugbar",
+    "internal_error": "Interner Edge-Fehler"
+  },
+  "tools": {
+    "home": {
+      "title": "Chat Edge Werkzeuge",
+      "subtitle": "Schneller Zugriff auf Infrastruktur-Tools hinter VPN-Richtlinie.",
+      "db_name": "Datenbank-Admin",
+      "db_desc": "PostgreSQL-Verwaltungsoberfläche",
+      "minio_name": "MinIO-Konsole",
+      "minio_desc": "S3-Buckets und Objekte",
+      "wireguard_name": "WireGuard-Oberfläche",
+      "wireguard_desc": "VPN-Peers und Konfigurationen",
+      "logs_name": "Container-Logs",
+      "logs_desc": "Dozzle-Logübersicht",
+      "note": "Falls ein Tool nicht verfügbar ist, prüfe Containerstatus und gewähltes Admin-Profil."
+    }
+  }
+}

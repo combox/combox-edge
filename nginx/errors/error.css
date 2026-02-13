@@ -1,0 +1,59 @@
+/* Minimal dark error page to replace default nginx white pages. */
+:root {
+  --bg0: #262626;
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.62);
+  --line: rgba(255, 255, 255, 0.14);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg0);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  display: grid;
+  place-items: center;
+}
+
+.wrap {
+  width: min(920px, calc(100% - 48px));
+  text-align: center;
+}
+
+.row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.code {
+  font-weight: 300;
+  font-size: clamp(38px, 6vw, 64px);
+  letter-spacing: -0.01em;
+}
+
+.sep {
+  width: 1px;
+  height: 28px;
+  background: var(--line);
+  transform: translateY(2px);
+}
+
+.title {
+  font-weight: 500;
+  font-size: clamp(12px, 2vw, 14px);
+  color: var(--muted);
+}
+
+.hint {
+  margin-top: 22px;
+  font-size: 14px;
+  color: var(--muted);
+}
+

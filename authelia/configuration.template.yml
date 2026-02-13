@@ -1,0 +1,49 @@
+server:
+  address: tcp://0.0.0.0:9091
+
+log:
+  level: info
+
+totp:
+  issuer: "__AUTHELIA_TOTP_ISSUER__"
+
+authentication_backend:
+  file:
+    path: /data/users_database.yml
+    watch: true
+
+access_control:
+  default_policy: deny
+  rules:
+    - domain_regex: "^.*$"
+      resources:
+        - "^/tools(/.*)?$"
+      policy: two_factor
+
+session:
+  name: authelia_session
+  secret: "__AUTHELIA_SESSION_SECRET__"
+  expiration: 1h
+  inactivity: 10m
+  remember_me: 30d
+  cookies:
+    - domain: "__AUTHELIA_SESSION_DOMAIN__"
+      authelia_url: "https://__AUTHELIA_SESSION_DOMAIN__/authelia"
+
+regulation:
+  max_retries: 5
+  find_time: 2m
+  ban_time: 15m
+
+storage:
+  encryption_key: "__AUTHELIA_STORAGE_ENCRYPTION_KEY__"
+  local:
+    path: /data/db.sqlite3
+
+notifier:
+  filesystem:
+    filename: /data/notification.txt
+
+identity_validation:
+  reset_password:
+    jwt_secret: "__AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET__"
