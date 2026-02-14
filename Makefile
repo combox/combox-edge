@@ -1,4 +1,4 @@
-PROJECT_NAME ?= chat-edge
+PROJECT_NAME ?= combox-edge
 COMPOSE ?= docker compose --env-file .env -f docker-compose.yml
 
 ifneq (,$(wildcard .env))
@@ -9,8 +9,8 @@ endif
 .PHONY: up down restart ps logs logs-nginx logs-postgres logs-valkey logs-minio config pull reload-nginx validate-strings
 
 up:
-	@if [ "$(ADMIN_UI)" = "pgweb" ]; then docker rm -f chat-pgadmin >/dev/null 2>&1 || true; fi
-	@if [ "$(ADMIN_UI)" = "pgadmin" ]; then docker rm -f chat-pgweb >/dev/null 2>&1 || true; fi
+	@if [ "$(ADMIN_UI)" = "pgweb" ]; then docker rm -f combox-pgadmin >/dev/null 2>&1 || true; fi
+	@if [ "$(ADMIN_UI)" = "pgadmin" ]; then docker rm -f combox-pgweb >/dev/null 2>&1 || true; fi
 	$(COMPOSE) up -d --remove-orphans
 
 down:
