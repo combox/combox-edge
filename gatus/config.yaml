@@ -1,0 +1,51 @@
+web:
+  port: 8080
+  title: ComBox Status
+
+ui:
+  default-sort-by: group
+
+endpoints:
+  - name: backend
+    group: core
+    url: "https://combox-backend:8080/api/public/v1/health"
+    interval: 30s
+    client:
+      insecure: true
+      timeout: 5s
+      tls:
+        certificate-file: /etc/nginx/mtls/edge.crt
+        private-key-file: /etc/nginx/mtls/edge.key
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: app
+    group: core
+    url: "https://combox-app-mtls:443/"
+    interval: 30s
+    client:
+      insecure: true
+      timeout: 5s
+      tls:
+        certificate-file: /etc/nginx/mtls/edge.crt
+        private-key-file: /etc/nginx/mtls/edge.key
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: postgres
+    group: storage
+    url: "tcp://postgres:5432"
+    interval: 30s
+    client:
+      timeout: 5s
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: minio
+    group: storage
+    url: "http://minio:9000/minio/health/live"
+    interval: 30s
+    client:
+      timeout: 5s
+    conditions:
+      - "[STATUS] == 200"

@@ -39,11 +39,11 @@ Infrastructure edge stack for ComBox services. It provides a single HTTPS entryp
 
 ## Routing
 
-- `/api/private/*` -> `${BACKEND_UPSTREAM}`
-- `/api/public/*` -> `${BACKEND_UPSTREAM}`
-- `/ws/*` -> `${BACKEND_UPSTREAM}`
-- `/` -> `${APP_UPSTREAM}`
-- `/site/` -> `${SITE_UPSTREAM}`
+- `/api/private/*` -> backend upstream pool (`BACKEND_SERVERS`)
+- `/api/public/*` -> backend upstream pool (`BACKEND_SERVERS`)
+- `/ws/*` -> backend upstream pool (`BACKEND_SERVERS`)
+- `/` -> app upstream pool (`APP_SERVERS`)
+- `/site/` -> site upstream pool (`SITE_SERVERS`)
 - `/tools/minio/` -> MinIO Console (VPN only)
 - `/tools/db/` -> PostgreSQL admin UI (VPN only)
 - `/tools/logs/` -> Logs UI (VPN only)
@@ -53,6 +53,122 @@ Infrastructure edge stack for ComBox services. It provides a single HTTPS entryp
 Headers:
 
 - `X-Client-Locale` is derived from `Accept-Language` (fallback `EDGE_DEFAULT_LOCALE`).
+
+## Upstreams: multi-machine + mTLS
+
+Edge supports load balancing across many upstream instances (including servers in different countries).
+
+Configure upstream pools in `.env` as server lists:
+
+- `BACKEND_SERVERS` (backend instances)
+- `APP_SERVERS` (frontend/app instances)
+- `SITE_SERVERS` (marketing/static site instances)
+
+Example:
+
+```bash
+BACKEND_SERVERS=
+  server backend-1.example.com:8443;
+  server backend-2.example.com:8443;
+
+APP_SERVERS=
+  server app-1.example.com:443;
+  server app-2.example.com:443;
+```
+
+### Load balancing + failover (passive)
+
+Nginx uses `least_conn` for upstream selection and passive failover for HTTP requests.
+
+- If an upstream returns `502/503/504` or times out, Nginx retries another upstream (`EDGE_UPSTREAM_TRIES`, `EDGE_UPSTREAM_TRIES_TIMEOUT`).
+- WebSocket endpoint `/api/private/v1/ws` does not retry (by design).
+
+### mTLS between edge and upstreams
+
+Edge connects to upstreams over HTTPS and uses mutual TLS.
+
+To bootstrap certificates locally, use the helper script:
+
+```bash
+./scripts/init-mtls.sh init
+./scripts/init-mtls.sh issue-server <dns_name>
+```
+
+Required files on the edge host (mounted into `/etc/nginx/mtls` in container):
+
+- `mtls/ca.crt` (CA that signs upstream server certs and edge client cert)
+- `mtls/edge.crt` + `mtls/edge.key` (client cert/key presented by edge)
+
+Env variables:
+
+```bash
+EDGE_UPSTREAM_TLS_VERIFY=on
+EDGE_UPSTREAM_TLS_TRUSTED_CA=/etc/nginx/mtls/ca.crt
+EDGE_UPSTREAM_TLS_CLIENT_CERT=/etc/nginx/mtls/edge.crt
+EDGE_UPSTREAM_TLS_CLIENT_KEY=/etc/nginx/mtls/edge.key
+```
+
+Upstreams must:
+
+- expose HTTPS
+- present a server certificate signed by `ca.crt`
+- require and verify the edge client certificate
+
+## Multi-S3 (multiple buckets/providers)
+
+ComBox uses an S3-compatible API for media/attachments (MinIO in local/dev).
+
+To scale beyond a single storage:
+
+- **Multiple providers**: run several S3-compatible backends (AWS S3, Cloudflare R2, Backblaze B2, MinIO, etc.) and treat them as independent targets.
+- **Multiple buckets**: split by region, purpose, or lifecycle policy (e.g. `media-eu`, `media-us`, `avatars`, `uploads-temp`).
+- **Routing strategy**: decide how objects are mapped to a target:
+  - by user region/zone
+  - by chat shard/tenant
+  - by object type (avatar vs attachment)
+  - by time (new uploads to a new bucket)
+- **Durability**: enable provider-side replication where available, or implement asynchronous copy jobs.
+- **Failover**: for reads, you can fall back to secondary replicas if primary is down; for writes, you typically fail fast or route to a designated secondary.
+
+Implementation note:
+
+- Store object metadata in PostgreSQL with at least: `storage_provider`, `bucket`, `key`, `region`.
+- Build URLs either via a CDN domain per bucket/provider, or via signed URLs (recommended).
+
+## Public status page (Gatus)
+
+Edge runs a public status server using Gatus.
+
+- UI: `https://${EDGE_STATUS_DOMAIN}`
+- API: `https://${EDGE_STATUS_DOMAIN}/api/v1/endpoints/statuses`
+
+Gatus is configured via `gatus/config.yaml`.
+
+To add more checks (DB/S3/multiple providers), append endpoints in that YAML file.
+
+### Backend deployment (VPS)
+
+For `chat-backend`, enable TLS+mTLS via env vars:
+
+```bash
+TLS_ENABLED=true
+TLS_CERT_FILE=/etc/combox/mtls/server.crt
+TLS_KEY_FILE=/etc/combox/mtls/server.key
+TLS_CLIENT_CA_FILE=/etc/combox/mtls/ca.crt
+HTTP_ADDRESS=:8443
+```
+
+Place the certs on the VPS and mount them into the container (see `chat-backend/docker-compose.edge.yml`).
+
+### App deployment (VPS)
+
+For `chat-app`, `combox-app` stays HTTP (Vite) and `combox-app-mtls` (nginx) provides HTTPS+mTLS entrypoint.
+
+Edge should point to the mTLS endpoint:
+
+- `APP_SERVERS=server <app-host>:443;`
+
+Make sure the VPS exposes only the mTLS endpoint publicly (or only to edge/VPN), and keeps the internal Vite port private.
 
 ## Repo layout
 
@@ -81,9 +197,45 @@ Gateway mode defaults:
 
 Backend and app are expected to run in separate compose stacks, connected to network `chat-edge-core`.
 
-### Connect external backend and app to edge
+## Multi-machine deployment guide
 
-1. Start edge core:
+### Step 1: Configure upstream pools
+
+In `.env`, define the upstream pools:
+
+```bash
+BACKEND_SERVERS=
+  server backend-1.example.com:8443;
+  server backend-2.example.com:8443;
+
+APP_SERVERS=
+  server app-1.example.com:443;
+  server app-2.example.com:443;
+```
+
+### Step 2: Configure mTLS
+
+Create the required files on the edge host:
+
+- `mtls/ca.crt` (CA that signs upstream server certs and edge client cert)
+- `mtls/edge.crt` + `mtls/edge.key` (client cert/key presented by edge)
+
+Set the env variables:
+
+```bash
+EDGE_UPSTREAM_TLS_VERIFY=on
+EDGE_UPSTREAM_TLS_TRUSTED_CA=/etc/nginx/mtls/ca.crt
+EDGE_UPSTREAM_TLS_CLIENT_CERT=/etc/nginx/mtls/edge.crt
+EDGE_UPSTREAM_TLS_CLIENT_KEY=/etc/nginx/mtls/edge.key
+```
+
+### Step 3: Deploy backend and app
+
+Deploy the backend and app on separate VPS instances, following the instructions above.
+
+### Step 4: Connect to edge
+
+Start the edge core:
 
 ```bash
 make up
@@ -236,7 +388,7 @@ docker compose --env-file .env logs -f nginx
 ## License
 
 <a href="./LICENSE">
-  <img src=".github/assets/mit-badge.png" width="80" alt="MIT License">
+  <img src=".github/assets/mit-badge.png" width="70" alt="MIT License">
 </a>
 
 

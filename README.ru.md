@@ -39,11 +39,11 @@
 
 ## Маршрутизация
 
-- `/api/private/*` -> `${BACKEND_UPSTREAM}`
-- `/api/public/*` -> `${BACKEND_UPSTREAM}`
-- `/ws/*` -> `${BACKEND_UPSTREAM}`
-- `/` -> `${APP_UPSTREAM}`
-- `/site/` -> `${SITE_UPSTREAM}`
+- `/api/private/*` -> пул backend (`BACKEND_SERVERS`)
+- `/api/public/*` -> пул backend (`BACKEND_SERVERS`)
+- `/ws/*` -> пул backend (`BACKEND_SERVERS`)
+- `/` -> пул app (`APP_SERVERS`)
+- `/site/` -> пул site (`SITE_SERVERS`)
 - `/tools/minio/` -> MinIO Console (только VPN)
 - `/tools/db/` -> админка PostgreSQL (только VPN)
 - `/tools/logs/` -> UI логов (только VPN)
@@ -80,6 +80,74 @@ docker compose --env-file .env -f docker-compose.yml up -d
 - `APP_UPSTREAM=chat-app:4173`
 
 Ожидается, что backend и app запускаются в отдельных compose-стеках, но подключены к сети `chat-edge-core`.
+
+## Upstreams: multi-machine + mTLS
+
+Edge умеет балансировать нагрузку между несколькими backend/app инстансами (включая VPS в разных странах).
+
+Пулы upstream задаются в `.env` как списки `server ...;`:
+
+- `BACKEND_SERVERS`
+- `APP_SERVERS`
+- `SITE_SERVERS`
+
+### mTLS между edge и upstream
+
+Edge подключается к upstream по HTTPS и использует mutual TLS.
+
+Чтобы быстро сгенерировать CA + сертификат edge + server cert для upstream, используй скрипт:
+
+```bash
+./scripts/init-mtls.sh init
+./scripts/init-mtls.sh issue-server <dns_name>
+```
+
+Файлы на edge-хосте (монтируются в контейнер как `/etc/nginx/mtls`):
+
+- `mtls/ca.crt`
+- `mtls/edge.crt` + `mtls/edge.key`
+
+Upstream обязан:
+
+- поднимать HTTPS
+- показывать server-сертификат, подписанный `ca.crt`
+- требовать и проверять client-сертификат edge
+
+## Multi-S3 (несколько хранилищ)
+
+ComBox хранит медиа/вложения в S3-compatible API (в dev используется MinIO).
+
+Чтобы масштабироваться без привязки к одному бакету/провайдеру:
+
+- **Несколько провайдеров**: AWS S3 / Cloudflare R2 / Backblaze B2 / MinIO и т.д.
+- **Несколько бакетов**: по регионам и политикам хранения (например `media-eu`, `media-us`, `avatars`).
+- **Стратегия маршрутизации**: как выбрать куда писать объект:
+  - по региону/зоне пользователя
+  - по tenant/shard
+  - по типу объекта
+  - по времени (миграции без даунтайма)
+- **Надёжность**: репликация на стороне провайдера или асинхронные copy jobs.
+- **Failover**: чтение можно делать с fallback, запись — либо fail-fast, либо в заранее выбранный secondary.
+
+Технически удобно хранить в Postgres метаданные объекта: `storage_provider`, `bucket`, `key`, `region`, а выдачу делать через CDN домены или signed URLs.
+
+### Балансировка + failover (пассивная)
+
+Nginx использует `least_conn` и пассивный failover для HTTP:
+
+- Если один upstream отдаёт `502/503/504` или не отвечает по таймауту — запрос будет повторён на другом upstream (`EDGE_UPSTREAM_TRIES`, `EDGE_UPSTREAM_TRIES_TIMEOUT`).
+- Для WebSocket `/api/private/v1/ws` повторные попытки отключены (это нормально).
+
+## Публичная страница статуса (Gatus)
+
+Edge поднимает публичный статус-сервер на базе Gatus.
+
+- UI: `https://${EDGE_STATUS_DOMAIN}`
+- API: `https://${EDGE_STATUS_DOMAIN}/api/v1/endpoints/statuses`
+
+Конфигурация задаётся в `gatus/config.yaml`.
+
+Чтобы добавить проверки для DB/S3/нескольких провайдеров — добавляй новые `endpoints` в YAML.
 
 ### Подключение внешних backend/app к edge
 

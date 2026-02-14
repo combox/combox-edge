@@ -3,6 +3,21 @@ map $http_upgrade $connection_upgrade {
   '' close;
 }
 
+upstream backend_upstream {
+  least_conn;
+  ${BACKEND_SERVERS}
+}
+
+upstream app_upstream {
+  least_conn;
+  ${APP_SERVERS}
+}
+
+upstream site_upstream {
+  least_conn;
+  ${SITE_SERVERS}
+}
+
 map $http_accept_language $edge_locale {
   default ${EDGE_DEFAULT_LOCALE};
   ~*^ru ru;
@@ -403,11 +418,23 @@ server {
   }
 
   location /api/private/ {
-    proxy_pass http://${BACKEND_UPSTREAM};
+    proxy_pass https://backend_upstream;
     proxy_http_version 1.1;
     proxy_connect_timeout 5s;
     proxy_send_timeout 60s;
     proxy_read_timeout 60s;
+    proxy_ssl_server_name on;
+    proxy_ssl_name $proxy_host;
+    proxy_ssl_verify ${EDGE_UPSTREAM_TLS_VERIFY};
+    proxy_ssl_verify_depth ${EDGE_UPSTREAM_TLS_VERIFY_DEPTH};
+    proxy_ssl_trusted_certificate ${EDGE_UPSTREAM_TLS_TRUSTED_CA};
+    proxy_ssl_certificate ${EDGE_UPSTREAM_TLS_CLIENT_CERT};
+    proxy_ssl_certificate_key ${EDGE_UPSTREAM_TLS_CLIENT_KEY};
+
+    proxy_next_upstream error timeout http_502 http_503 http_504;
+    proxy_next_upstream_tries ${EDGE_UPSTREAM_TRIES};
+    proxy_next_upstream_timeout ${EDGE_UPSTREAM_TRIES_TIMEOUT};
+
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -418,11 +445,23 @@ server {
   }
 
   location /api/public/ {
-    proxy_pass http://${BACKEND_UPSTREAM};
+    proxy_pass https://backend_upstream;
     proxy_http_version 1.1;
     proxy_connect_timeout 5s;
     proxy_send_timeout 60s;
     proxy_read_timeout 60s;
+    proxy_ssl_server_name on;
+    proxy_ssl_name $proxy_host;
+    proxy_ssl_verify ${EDGE_UPSTREAM_TLS_VERIFY};
+    proxy_ssl_verify_depth ${EDGE_UPSTREAM_TLS_VERIFY_DEPTH};
+    proxy_ssl_trusted_certificate ${EDGE_UPSTREAM_TLS_TRUSTED_CA};
+    proxy_ssl_certificate ${EDGE_UPSTREAM_TLS_CLIENT_CERT};
+    proxy_ssl_certificate_key ${EDGE_UPSTREAM_TLS_CLIENT_KEY};
+
+    proxy_next_upstream error timeout http_502 http_503 http_504;
+    proxy_next_upstream_tries ${EDGE_UPSTREAM_TRIES};
+    proxy_next_upstream_timeout ${EDGE_UPSTREAM_TRIES_TIMEOUT};
+
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -444,11 +483,21 @@ server {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
   }
 
-  location /ws/ {
-    proxy_pass http://${BACKEND_UPSTREAM};
+  location = /api/private/v1/ws {
+    proxy_pass https://backend_upstream;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
+    proxy_ssl_server_name on;
+    proxy_ssl_name $proxy_host;
+    proxy_ssl_verify ${EDGE_UPSTREAM_TLS_VERIFY};
+    proxy_ssl_verify_depth ${EDGE_UPSTREAM_TLS_VERIFY_DEPTH};
+    proxy_ssl_trusted_certificate ${EDGE_UPSTREAM_TLS_TRUSTED_CA};
+    proxy_ssl_certificate ${EDGE_UPSTREAM_TLS_CLIENT_CERT};
+    proxy_ssl_certificate_key ${EDGE_UPSTREAM_TLS_CLIENT_KEY};
+
+    proxy_next_upstream off;
+
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -458,22 +507,87 @@ server {
     proxy_connect_timeout 5s;
     proxy_send_timeout 60s;
     proxy_read_timeout ${EDGE_WS_READ_TIMEOUT};
+    proxy_buffering off;
+  }
+
+  location /ws/ {
+    proxy_pass https://backend_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_ssl_server_name on;
+    proxy_ssl_name $proxy_host;
+    proxy_ssl_verify ${EDGE_UPSTREAM_TLS_VERIFY};
+    proxy_ssl_verify_depth ${EDGE_UPSTREAM_TLS_VERIFY_DEPTH};
+    proxy_ssl_trusted_certificate ${EDGE_UPSTREAM_TLS_TRUSTED_CA};
+    proxy_ssl_certificate ${EDGE_UPSTREAM_TLS_CLIENT_CERT};
+    proxy_ssl_certificate_key ${EDGE_UPSTREAM_TLS_CLIENT_KEY};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Request-ID $request_id;
+    proxy_set_header X-Client-Locale $edge_locale;
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 3600s;
+    proxy_read_timeout ${EDGE_WS_READ_TIMEOUT};
   }
 
   location /site/ {
-    proxy_pass http://${SITE_UPSTREAM}/;
+    proxy_pass https://site_upstream/;
     proxy_http_version 1.1;
+    proxy_ssl_server_name on;
+    proxy_ssl_name $proxy_host;
+    proxy_ssl_verify ${EDGE_UPSTREAM_TLS_VERIFY};
+    proxy_ssl_verify_depth ${EDGE_UPSTREAM_TLS_VERIFY_DEPTH};
+    proxy_ssl_trusted_certificate ${EDGE_UPSTREAM_TLS_TRUSTED_CA};
+    proxy_ssl_certificate ${EDGE_UPSTREAM_TLS_CLIENT_CERT};
+    proxy_ssl_certificate_key ${EDGE_UPSTREAM_TLS_CLIENT_KEY};
+
+    proxy_next_upstream error timeout http_502 http_503 http_504;
+    proxy_next_upstream_tries ${EDGE_UPSTREAM_TRIES};
+    proxy_next_upstream_timeout ${EDGE_UPSTREAM_TRIES_TIMEOUT};
+
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Client-Locale $edge_locale;
   }
 
   location / {
-    proxy_pass http://${APP_UPSTREAM};
+    proxy_pass https://app_upstream;
     proxy_http_version 1.1;
+    proxy_ssl_server_name on;
+    proxy_ssl_name $proxy_host;
+    proxy_ssl_verify ${EDGE_UPSTREAM_TLS_VERIFY};
+    proxy_ssl_verify_depth ${EDGE_UPSTREAM_TLS_VERIFY_DEPTH};
+    proxy_ssl_trusted_certificate ${EDGE_UPSTREAM_TLS_TRUSTED_CA};
+    proxy_ssl_certificate ${EDGE_UPSTREAM_TLS_CLIENT_CERT};
+    proxy_ssl_certificate_key ${EDGE_UPSTREAM_TLS_CLIENT_KEY};
+
+    proxy_next_upstream error timeout http_502 http_503 http_504;
+    proxy_next_upstream_tries ${EDGE_UPSTREAM_TRIES};
+    proxy_next_upstream_timeout ${EDGE_UPSTREAM_TRIES_TIMEOUT};
+
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Client-Locale $edge_locale;
+  }
+}
+
+server {
+  listen 443 ssl;
+  server_name ${EDGE_STATUS_DOMAIN};
+
+  ssl_certificate /etc/letsencrypt/live/${EDGE_TLS_DOMAIN}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${EDGE_TLS_DOMAIN}/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+
+  location / {
+    proxy_pass http://status:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
   }
 }
 
