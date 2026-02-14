@@ -239,6 +239,7 @@ docker compose --env-file .env logs -f nginx
   <img src=".github/assets/mit-badge.png" width="150" alt="MIT License">
 </a>
 
+
 ## Author
 
 [Ernela](https://github.com/Ernous) - Developer;
