@@ -235,7 +235,7 @@ docker compose --env-file .env logs -f nginx
 
 ## License
 
-[MIT](./LICENSE)
+[![MIT](.github/assets/mit-badge.png)](./LICENSE)
 
 ## Author
 
