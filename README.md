@@ -346,6 +346,17 @@ docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --
 
 Put the generated digest into `.env` as `EDGE_AUTHELIA_ADMIN_PASSWORD_HASH=...`. If the hash contains `$`, escape each `$` as `$$` in `.env`.
 
+### Getting one-time codes from Authelia (TOTP)
+
+If the Authelia web interface prompts for a code but you don't have access to an authenticator app, you can retrieve it from the container:
+
+```bash
+cd ./chat-edge
+docker compose exec -T authelia sh -lc 'tail -n 120 /data/notification.txt'
+```
+
+This will show recent entries, including the one-time code for login.
+
 Multi-account mode:
 
 - Set `EDGE_AUTHELIA_USERS=admin,devops,...`

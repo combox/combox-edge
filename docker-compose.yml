@@ -37,9 +37,9 @@ services:
       BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-combox-backend:8080}
       APP_UPSTREAM: ${APP_UPSTREAM:-combox-app:4173}
       SITE_UPSTREAM: ${SITE_UPSTREAM:-host.docker.internal:3001}
-      BACKEND_SERVERS: ${BACKEND_SERVERS:-server combox-backend:8080;}
-      APP_SERVERS: ${APP_SERVERS:-server combox-app-mtls:443;}
-      SITE_SERVERS: ${SITE_SERVERS:-server host.docker.internal:3001;}
+      BACKEND_SERVERS: ${BACKEND_SERVERS:-server combox-backend:8080 resolve;}
+      APP_SERVERS: ${APP_SERVERS:-server combox-app-mtls:443 resolve;}
+      SITE_SERVERS: ${SITE_SERVERS:-server host.docker.internal:3001 resolve;}
       EDGE_CLIENT_MAX_BODY_SIZE: ${EDGE_CLIENT_MAX_BODY_SIZE:-25m}
       EDGE_WS_READ_TIMEOUT: ${EDGE_WS_READ_TIMEOUT:-3600s}
       EDGE_UPSTREAM_TLS_VERIFY: ${EDGE_UPSTREAM_TLS_VERIFY:-on}
@@ -47,6 +47,9 @@ services:
       EDGE_UPSTREAM_TLS_TRUSTED_CA: ${EDGE_UPSTREAM_TLS_TRUSTED_CA:-/etc/nginx/mtls/ca.crt}
       EDGE_UPSTREAM_TLS_CLIENT_CERT: ${EDGE_UPSTREAM_TLS_CLIENT_CERT:-/etc/nginx/mtls/edge.crt}
       EDGE_UPSTREAM_TLS_CLIENT_KEY: ${EDGE_UPSTREAM_TLS_CLIENT_KEY:-/etc/nginx/mtls/edge.key}
+      EDGE_BACKEND_TLS_SNI: ${EDGE_BACKEND_TLS_SNI:-combox-backend}
+      EDGE_APP_TLS_SNI: ${EDGE_APP_TLS_SNI:-combox-app-mtls}
+      EDGE_SITE_TLS_SNI: ${EDGE_SITE_TLS_SNI:-host.docker.internal}
 
       EDGE_UPSTREAM_TRIES: ${EDGE_UPSTREAM_TRIES:-3}
       EDGE_UPSTREAM_TRIES_TIMEOUT: ${EDGE_UPSTREAM_TRIES_TIMEOUT:-5s}
@@ -55,6 +58,7 @@ services:
       EDGE_RATE_LIMIT_BURST: ${EDGE_RATE_LIMIT_BURST:-60}
       EDGE_DEFAULT_LOCALE: ${EDGE_DEFAULT_LOCALE:-en}
       EDGE_TLS_DOMAIN: ${EDGE_TLS_DOMAIN:-localhost}
+      EDGE_STATUS_DOMAIN: ${EDGE_STATUS_DOMAIN:-status.localhost}
       VPN_CIDR: ${VPN_CIDR:-10.8.0.0/24}
       VPN_DOCKER_CIDR: ${VPN_DOCKER_CIDR:-172.18.0.0/16}
       ADMIN_UI: ${ADMIN_UI:-pgweb}

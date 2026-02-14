@@ -54,6 +54,8 @@
 
 - `X-Client-Locale` берётся из `Accept-Language` (fallback `EDGE_DEFAULT_LOCALE`).
 
+`/api/private/v1/*` предназначено для авторизованных запросов и требует `Authorization: Bearer <access_token>` (кроме эндпоинтов авторизации и `/api/private/v1/ws`).
+
 ## Структура репозитория
 
 - Compose: `docker-compose.yml`
@@ -237,6 +239,17 @@ docker run --rm ghcr.io/wg-easy/wg-easy:latest \
 ```
 
 Сохрани результат в `.env` как `WG_PASSWORD_HASH=...` и экранируй `$` как `$$`.
+
+### Получение одноразового кода для Authelia (TOTP)
+
+Если в веб-интерфейсе Authelia запрошен код, но у тебя нет доступа к приложению-аутентификатору, ты можешь получить его из контейнера:
+
+```bash
+cd ./chat-edge
+docker compose exec -T authelia sh -lc 'tail -n 120 /data/notification.txt'
+```
+
+Команда покажет последние записи, включая одноразовый код для входа.
 
 ### Настройка Authelia
 
