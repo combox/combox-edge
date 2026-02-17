@@ -17,57 +17,6 @@ ui:
   dark-mode: false
   default-filter-by: none
   default-sort-by: group
-  custom-css: |
-    :root {
-      --brand: #0f766e;
-      --brand-2: #0ea5e9;
-      --bg: #f3f6fb;
-      --panel: #ffffff;
-      --text: #0f172a;
-      --muted: #64748b;
-      --ok: #16a34a;
-      --bad: #dc2626;
-    }
-    body {
-      background: radial-gradient(1200px 600px at 10% -20%, #d1fae5 0%, transparent 60%),
-                  radial-gradient(900px 500px at 90% -20%, #dbeafe 0%, transparent 60%),
-                  var(--bg);
-      color: var(--text);
-    }
-    .header {
-      background: linear-gradient(90deg, var(--brand), var(--brand-2));
-      color: #fff;
-      border-bottom: 0;
-      box-shadow: 0 8px 24px rgba(2, 6, 23, 0.15);
-    }
-    .header a, .header svg, .header h1 {
-      color: #fff !important;
-      fill: #fff !important;
-    }
-    .container, .group, .card {
-      border-radius: 14px !important;
-    }
-    .group, .card, .search-and-filter {
-      background: var(--panel) !important;
-      border: 1px solid #e2e8f0 !important;
-      box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
-    }
-    .group__header {
-      background: #f8fafc !important;
-    }
-    .badge--healthy {
-      background: rgba(22, 163, 74, 0.16) !important;
-      color: var(--ok) !important;
-      border: 1px solid rgba(22, 163, 74, 0.32);
-    }
-    .badge--unhealthy {
-      background: rgba(220, 38, 38, 0.14) !important;
-      color: var(--bad) !important;
-      border: 1px solid rgba(220, 38, 38, 0.28);
-    }
-    .description, .muted {
-      color: var(--muted) !important;
-    }
 
 endpoints:
   - name: edge-nginx
@@ -116,18 +65,6 @@ endpoints:
     conditions:
       - "[STATUS] == 200"
       - "[BODY] == pat(*_app/immutable*)"
-
-  - name: app-api-path
-    group: core
-    url: "https://combox-edge-nginx/api/private/v1/healthz"
-    interval: 30s
-    headers:
-      Host: app.combox.local
-    client:
-      insecure: true
-      timeout: 5s
-    conditions:
-      - "[STATUS] == 401"
 
   - name: postgres
     group: storage
