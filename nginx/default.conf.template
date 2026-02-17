@@ -62,6 +62,18 @@ map "" $logs_ui_upstream {
   default "${LOGS_UI_UPSTREAM}";
 }
 
+map $host $web_upstream_name {
+  default app_upstream;
+  ${EDGE_SITE_DOMAIN} site_upstream;
+  ${EDGE_APP_DOMAIN} app_upstream;
+}
+
+map $host $web_tls_sni {
+  default "${EDGE_APP_TLS_SNI}";
+  ${EDGE_SITE_DOMAIN} "${EDGE_SITE_TLS_SNI}";
+  ${EDGE_APP_DOMAIN} "${EDGE_APP_TLS_SNI}";
+}
+
 geo $edge_is_vpn {
   default 0;
   ${VPN_CIDR} 1;
@@ -578,11 +590,15 @@ server {
   }
 
   location / {
+    if ($host = ${EDGE_API_DOMAIN}) {
+      return 404;
+    }
+
     proxy_intercept_errors on;
-    proxy_pass https://app_upstream;
+    proxy_pass https://$web_upstream_name;
     proxy_http_version 1.1;
     proxy_ssl_server_name on;
-    proxy_ssl_name ${EDGE_APP_TLS_SNI};
+    proxy_ssl_name $web_tls_sni;
     proxy_ssl_verify ${EDGE_UPSTREAM_TLS_VERIFY};
     proxy_ssl_verify_depth ${EDGE_UPSTREAM_TLS_VERIFY_DEPTH};
     proxy_ssl_trusted_certificate ${EDGE_UPSTREAM_TLS_TRUSTED_CA};

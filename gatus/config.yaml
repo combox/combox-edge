@@ -1,14 +1,97 @@
 web:
   port: 8080
-  title: ComBox Status
 
 ui:
+  title: ComBox Status
+  description: Live status of edge routing, frontend and backend services
+  header: ComBox
+  dashboard-heading: Service Health
+  dashboard-subheading: Real-time checks for edge, app, api and storage
+  logo: "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/icons/activity.svg"
+  link: "https://status.combox.local"
+  buttons:
+    - name: Open App
+      link: "https://app.combox.local"
+    - name: Open API
+      link: "https://api.combox.local/healthz"
+  dark-mode: false
+  default-filter-by: none
   default-sort-by: group
+  custom-css: |
+    :root {
+      --brand: #0f766e;
+      --brand-2: #0ea5e9;
+      --bg: #f3f6fb;
+      --panel: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --ok: #16a34a;
+      --bad: #dc2626;
+    }
+    body {
+      background: radial-gradient(1200px 600px at 10% -20%, #d1fae5 0%, transparent 60%),
+                  radial-gradient(900px 500px at 90% -20%, #dbeafe 0%, transparent 60%),
+                  var(--bg);
+      color: var(--text);
+    }
+    .header {
+      background: linear-gradient(90deg, var(--brand), var(--brand-2));
+      color: #fff;
+      border-bottom: 0;
+      box-shadow: 0 8px 24px rgba(2, 6, 23, 0.15);
+    }
+    .header a, .header svg, .header h1 {
+      color: #fff !important;
+      fill: #fff !important;
+    }
+    .container, .group, .card {
+      border-radius: 14px !important;
+    }
+    .group, .card, .search-and-filter {
+      background: var(--panel) !important;
+      border: 1px solid #e2e8f0 !important;
+      box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+    }
+    .group__header {
+      background: #f8fafc !important;
+    }
+    .badge--healthy {
+      background: rgba(22, 163, 74, 0.16) !important;
+      color: var(--ok) !important;
+      border: 1px solid rgba(22, 163, 74, 0.32);
+    }
+    .badge--unhealthy {
+      background: rgba(220, 38, 38, 0.14) !important;
+      color: var(--bad) !important;
+      border: 1px solid rgba(220, 38, 38, 0.28);
+    }
+    .description, .muted {
+      color: var(--muted) !important;
+    }
 
 endpoints:
+  - name: edge-nginx
+    group: edge
+    url: "http://combox-edge-nginx/healthz"
+    interval: 30s
+    client:
+      timeout: 5s
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*ok*)"
+
+  - name: edge-status-ui
+    group: edge
+    url: "http://status:8080/"
+    interval: 30s
+    client:
+      timeout: 5s
+    conditions:
+      - "[STATUS] == 200"
+
   - name: backend
     group: core
-    url: "https://combox-backend:8080/api/public/v1/health"
+    url: "https://combox-backend:8080/healthz"
     interval: 30s
     client:
       insecure: true
@@ -18,8 +101,9 @@ endpoints:
         private-key-file: /etc/nginx/mtls/edge.key
     conditions:
       - "[STATUS] == 200"
+      - "[BODY].status == ok"
 
-  - name: app
+  - name: app-web
     group: core
     url: "https://combox-app-mtls:443/"
     interval: 30s
@@ -31,6 +115,19 @@ endpoints:
         private-key-file: /etc/nginx/mtls/edge.key
     conditions:
       - "[STATUS] == 200"
+      - "[BODY] == pat(*_app/immutable*)"
+
+  - name: app-api-path
+    group: core
+    url: "https://combox-edge-nginx/api/private/v1/healthz"
+    interval: 30s
+    headers:
+      Host: app.combox.local
+    client:
+      insecure: true
+      timeout: 5s
+    conditions:
+      - "[STATUS] == 401"
 
   - name: postgres
     group: storage
