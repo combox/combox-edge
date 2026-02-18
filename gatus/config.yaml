@@ -64,7 +64,7 @@ endpoints:
         private-key-file: /etc/nginx/mtls/edge.key
     conditions:
       - "[STATUS] == 200"
-      - "[BODY] == pat(*_app/immutable*)"
+      - "[BODY] == pat(*id=\"root\"*)"
 
   - name: postgres
     group: storage
