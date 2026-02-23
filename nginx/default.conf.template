@@ -68,6 +68,11 @@ map $host $web_upstream_name {
   ${EDGE_APP_DOMAIN} app_upstream;
 }
 
+map $http_origin $api_cors_allow_origin {
+  default "";
+  "~^https://(${EDGE_APP_DOMAIN}|${EDGE_API_DOMAIN})(:[0-9]+)?$" $http_origin;
+}
+
 map $host $web_tls_sni {
   default "${EDGE_APP_TLS_SNI}";
   ${EDGE_SITE_DOMAIN} "${EDGE_SITE_TLS_SNI}";
@@ -487,12 +492,18 @@ server {
   }
 
   location /api/private/ {
-    proxy_intercept_errors on;
-    error_page 404 /errors/404.html;
-    error_page 500 /errors/500.html;
-    error_page 502 /errors/502.html;
-    error_page 503 /errors/503.html;
-    error_page 504 /errors/504.html;
+    if ($request_method = OPTIONS) {
+      add_header Access-Control-Allow-Origin $api_cors_allow_origin always;
+      add_header Access-Control-Allow-Credentials "true" always;
+      add_header Access-Control-Allow-Private-Network "true" always;
+      add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+      add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Cache-Control, Pragma, X-Requested-With, X-Client-Locale, X-Request-ID" always;
+      add_header Access-Control-Max-Age "86400" always;
+      return 204;
+    }
+
+    # Keep backend JSON errors and preserve CORS headers for browser clients.
+    proxy_intercept_errors off;
     proxy_pass https://backend_upstream;
     proxy_http_version 1.1;
     proxy_connect_timeout 5s;
@@ -517,9 +528,23 @@ server {
     proxy_set_header X-Request-ID $request_id;
     proxy_set_header X-Client-Locale $edge_locale;
     limit_req zone=api_limit burst=${EDGE_RATE_LIMIT_BURST} nodelay;
+
+    add_header Access-Control-Allow-Origin $api_cors_allow_origin always;
+    add_header Access-Control-Allow-Credentials "true" always;
+    add_header Vary "Origin" always;
   }
 
   location /api/public/ {
+    if ($request_method = OPTIONS) {
+      add_header Access-Control-Allow-Origin $api_cors_allow_origin always;
+      add_header Access-Control-Allow-Credentials "true" always;
+      add_header Access-Control-Allow-Private-Network "true" always;
+      add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+      add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Cache-Control, Pragma, X-Requested-With, X-Client-Locale, X-Request-ID" always;
+      add_header Access-Control-Max-Age "86400" always;
+      return 204;
+    }
+
     proxy_intercept_errors on;
     error_page 404 /errors/404.html;
     error_page 500 /errors/500.html;
@@ -550,6 +575,24 @@ server {
     proxy_set_header X-Request-ID $request_id;
     proxy_set_header X-Client-Locale $edge_locale;
     limit_req zone=api_limit burst=${EDGE_RATE_LIMIT_BURST} nodelay;
+
+    add_header Access-Control-Allow-Origin $api_cors_allow_origin always;
+    add_header Access-Control-Allow-Credentials "true" always;
+    add_header Vary "Origin" always;
+  }
+
+  # Public S3 object/presigned URLs (signed by backend with host app.combox.local).
+  # Keep Host header as minio:9000 so S3 signature that was created for internal host stays valid.
+  location ^~ /chat-media/ {
+    proxy_pass http://minio:9000;
+    proxy_http_version 1.1;
+    proxy_set_header Host minio:9000;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_request_buffering off;
+    proxy_buffering off;
   }
 
   # Authelia portal API endpoints (/api/state, /api/firstfactor, etc.).
@@ -589,6 +632,10 @@ server {
     proxy_send_timeout 60s;
     proxy_read_timeout ${EDGE_WS_READ_TIMEOUT};
     proxy_buffering off;
+
+    add_header Access-Control-Allow-Origin $api_cors_allow_origin always;
+    add_header Access-Control-Allow-Credentials "true" always;
+    add_header Vary "Origin" always;
   }
 
   location /ws/ {
@@ -656,6 +703,8 @@ server {
     proxy_next_upstream_timeout ${EDGE_UPSTREAM_TRIES_TIMEOUT};
 
     proxy_set_header Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Client-Locale $edge_locale;
   }
