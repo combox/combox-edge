@@ -4,7 +4,7 @@ map $http_upgrade $connection_upgrade {
 }
 
 # Allow upstream DNS records to appear later (backend/app stacks run separately).
-resolver 127.0.0.11 ipv6=off valid=10s;
+resolver ${EDGE_DNS_RESOLVER} ipv6=off valid=10s;
 
 upstream backend_upstream {
   zone backend_upstream 64k;
@@ -68,9 +68,75 @@ map $host $web_upstream_name {
   ${EDGE_APP_DOMAIN} app_upstream;
 }
 
-map $http_origin $api_cors_allow_origin {
+map "" $edge_maintenance_mode {
+  default "${EDGE_MAINTENANCE_MODE}";
+}
+
+map $host $edge_maintenance_host {
+  default 0;
+  ${EDGE_APP_DOMAIN} 1;
+  ${EDGE_API_DOMAIN} 1;
+}
+
+map "$edge_maintenance_mode:$edge_maintenance_host" $edge_maintenance_enabled {
+  default 0;
+  "~^true:1$" 1;
+}
+
+map $http_origin $api_private_cors_allow_origin {
   default "";
-  "~^https://(${EDGE_APP_DOMAIN}|${EDGE_API_DOMAIN})(:[0-9]+)?$" $http_origin;
+  "~${EDGE_PRIVATE_CORS_ORIGIN_REGEX}" $http_origin;
+}
+
+map $http_origin $api_public_cors_allow_origin_matched {
+  default "";
+  "~${EDGE_PUBLIC_CORS_ORIGIN_REGEX}" $http_origin;
+}
+
+map "" $edge_public_cors_allow_any {
+  default "${EDGE_PUBLIC_CORS_ALLOW_ANY}";
+}
+
+map "$edge_public_cors_allow_any:$api_public_cors_allow_origin_matched" $api_public_cors_allow_origin {
+  default "";
+  "~^true:.*$" "*";
+  "~^false:(.+)$" "$1";
+}
+
+map "$http_origin|$api_private_cors_allow_origin" $api_private_cors_forbidden {
+  default 0;
+  "~^https?://.+\\|$" 1;
+}
+
+map "$http_origin|$api_public_cors_allow_origin" $api_public_cors_forbidden {
+  default 0;
+  "~^https?://.+\\|$" 1;
+}
+
+map "$request_method|$api_private_cors_allow_origin" $api_private_cors_preflight_forbidden {
+  default 0;
+  "~^OPTIONS\\|$" 1;
+}
+
+map "$request_method|$api_public_cors_allow_origin" $api_public_cors_preflight_forbidden {
+  default 0;
+  "~^OPTIONS\\|$" 1;
+}
+
+map "" $api_private_cors_allow_methods {
+  default "${EDGE_PRIVATE_CORS_ALLOW_METHODS}";
+}
+
+map "" $api_private_cors_allow_headers {
+  default "${EDGE_PRIVATE_CORS_ALLOW_HEADERS}";
+}
+
+map "" $api_public_cors_allow_methods {
+  default "${EDGE_PUBLIC_CORS_ALLOW_METHODS}";
+}
+
+map "" $api_public_cors_allow_headers {
+  default "${EDGE_PUBLIC_CORS_ALLOW_HEADERS}";
 }
 
 map $host $web_tls_sni {
@@ -112,6 +178,22 @@ server {
     return 200 "ok\n";
   }
 
+  location = /maintenance {
+    return 302 $scheme://$http_host/maintenance/;
+  }
+
+  location = /maintenance/ {
+    root /usr/share/nginx/html;
+    add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+    try_files /maintenance/index.html =503;
+  }
+
+  location ^~ /maintenance/ {
+    root /usr/share/nginx/html;
+    add_header Cache-Control "public, max-age=3600" always;
+    try_files $uri =404;
+  }
+
   location / {
     return 301 https://$host$request_uri;
   }
@@ -120,7 +202,7 @@ server {
 server {
   listen 443 ssl;
   server_name _;
-  resolver 127.0.0.11 ipv6=off valid=10s;
+  resolver ${EDGE_DNS_RESOLVER} ipv6=off valid=10s;
 
   ssl_certificate /etc/letsencrypt/live/${EDGE_TLS_DOMAIN}/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/${EDGE_TLS_DOMAIN}/privkey.pem;
@@ -186,6 +268,22 @@ server {
     access_log off;
     add_header Content-Type text/plain;
     return 200 "ok\n";
+  }
+
+  location = /maintenance {
+    return 302 $scheme://$http_host/maintenance/;
+  }
+
+  location = /maintenance/ {
+    root /usr/share/nginx/html;
+    add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+    try_files /maintenance/index.html =503;
+  }
+
+  location ^~ /maintenance/ {
+    root /usr/share/nginx/html;
+    add_header Cache-Control "public, max-age=3600" always;
+    try_files $uri =404;
   }
 
   location ~* ^/(postgres|pg|valkey|redis|minio|s3)(/|$) {
@@ -492,18 +590,27 @@ server {
   }
 
   location /api/private/ {
+    if ($edge_maintenance_enabled = 1) {
+      return 302 $scheme://$http_host/maintenance/;
+    }
+
+    if ($api_private_cors_forbidden = 1) { return 403; }
+    if ($api_private_cors_preflight_forbidden = 1) { return 403; }
+
     if ($request_method = OPTIONS) {
-      add_header Access-Control-Allow-Origin $api_cors_allow_origin always;
+      add_header Access-Control-Allow-Origin $api_private_cors_allow_origin always;
       add_header Access-Control-Allow-Credentials "true" always;
       add_header Access-Control-Allow-Private-Network "true" always;
-      add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
-      add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Cache-Control, Pragma, X-Requested-With, X-Client-Locale, X-Request-ID" always;
+      add_header Access-Control-Allow-Methods $api_private_cors_allow_methods always;
+      add_header Access-Control-Allow-Headers $api_private_cors_allow_headers always;
       add_header Access-Control-Max-Age "86400" always;
+      add_header Vary "Origin" always;
       return 204;
     }
 
     # Keep backend JSON errors and preserve CORS headers for browser clients.
     proxy_intercept_errors off;
+    error_page 502 503 504 = @api_private_upstream_error;
     proxy_pass https://backend_upstream;
     proxy_http_version 1.1;
     proxy_connect_timeout 5s;
@@ -529,19 +636,35 @@ server {
     proxy_set_header X-Client-Locale $edge_locale;
     limit_req zone=api_limit burst=${EDGE_RATE_LIMIT_BURST} nodelay;
 
-    add_header Access-Control-Allow-Origin $api_cors_allow_origin always;
+    add_header Access-Control-Allow-Origin $api_private_cors_allow_origin always;
     add_header Access-Control-Allow-Credentials "true" always;
     add_header Vary "Origin" always;
   }
 
+  location @api_private_upstream_error {
+    internal;
+    default_type application/json;
+    add_header Access-Control-Allow-Origin $api_private_cors_allow_origin always;
+    add_header Access-Control-Allow-Credentials "true" always;
+    add_header Vary "Origin" always;
+    return 502 '{"code":"internal","message":"upstream unavailable","details":{}}';
+  }
+
   location /api/public/ {
+    if ($edge_maintenance_enabled = 1) {
+      return 302 $scheme://$http_host/maintenance/;
+    }
+
+    if ($api_public_cors_forbidden = 1) { return 403; }
+    if ($api_public_cors_preflight_forbidden = 1) { return 403; }
+
     if ($request_method = OPTIONS) {
-      add_header Access-Control-Allow-Origin $api_cors_allow_origin always;
-      add_header Access-Control-Allow-Credentials "true" always;
+      add_header Access-Control-Allow-Origin $api_public_cors_allow_origin always;
       add_header Access-Control-Allow-Private-Network "true" always;
-      add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
-      add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Cache-Control, Pragma, X-Requested-With, X-Client-Locale, X-Request-ID" always;
+      add_header Access-Control-Allow-Methods $api_public_cors_allow_methods always;
+      add_header Access-Control-Allow-Headers $api_public_cors_allow_headers always;
       add_header Access-Control-Max-Age "86400" always;
+      add_header Vary "Origin" always;
       return 204;
     }
 
@@ -576,8 +699,7 @@ server {
     proxy_set_header X-Client-Locale $edge_locale;
     limit_req zone=api_limit burst=${EDGE_RATE_LIMIT_BURST} nodelay;
 
-    add_header Access-Control-Allow-Origin $api_cors_allow_origin always;
-    add_header Access-Control-Allow-Credentials "true" always;
+    add_header Access-Control-Allow-Origin $api_public_cors_allow_origin always;
     add_header Vary "Origin" always;
   }
 
@@ -598,6 +720,10 @@ server {
   # Authelia portal API endpoints (/api/state, /api/firstfactor, etc.).
   # More specific backend routes (/api/private, /api/public) are matched first.
   location ^~ /api/ {
+    if ($edge_maintenance_enabled = 1) {
+      return 302 $scheme://$http_host/maintenance/;
+    }
+
     proxy_pass http://authelia:9091/api/;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
@@ -608,6 +734,12 @@ server {
   }
 
   location = /api/private/v1/ws {
+    if ($edge_maintenance_enabled = 1) {
+      return 302 $scheme://$http_host/maintenance/;
+    }
+
+    if ($api_private_cors_forbidden = 1) { return 403; }
+
     proxy_pass https://backend_upstream;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
@@ -633,12 +765,16 @@ server {
     proxy_read_timeout ${EDGE_WS_READ_TIMEOUT};
     proxy_buffering off;
 
-    add_header Access-Control-Allow-Origin $api_cors_allow_origin always;
+    add_header Access-Control-Allow-Origin $api_private_cors_allow_origin always;
     add_header Access-Control-Allow-Credentials "true" always;
     add_header Vary "Origin" always;
   }
 
   location /ws/ {
+    if ($edge_maintenance_enabled = 1) {
+      return 302 $scheme://$http_host/maintenance/;
+    }
+
     proxy_pass https://backend_upstream;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
@@ -683,6 +819,10 @@ server {
   }
 
   location / {
+    if ($edge_maintenance_enabled = 1) {
+      return 302 $scheme://$http_host/maintenance/;
+    }
+
     if ($host = ${EDGE_API_DOMAIN}) {
       return 404;
     }
