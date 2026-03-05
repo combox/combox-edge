@@ -391,11 +391,6 @@ docker compose --env-file .env logs -f nginx
 - `postgres/init` scripts run only on first DB initialization for a fresh volume.
 - PostgreSQL web UI path is always `/tools/db/`, but container is selected by profile (`admin-pgweb` or `admin-pgadmin`).
 
-## Notes
-
-- Use only one compose file (`docker-compose.yml`) to avoid config drift.
-- Keep user-facing labels/messages in `strings/` and avoid hardcoded text in edge scripts/templates.
-
 ## License
 
 <a href="./LICENSE">
