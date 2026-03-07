@@ -54,7 +54,7 @@ endpoints:
 
   - name: app-web
     group: core
-    url: "https://combox-app-mtls:443/"
+    url: "https://combox-app-vue-mtls:443/"
     interval: 30s
     client:
       insecure: true
@@ -64,7 +64,7 @@ endpoints:
         private-key-file: /etc/nginx/mtls/edge.key
     conditions:
       - "[STATUS] == 200"
-      - "[BODY] == pat(*id=\"root\"*)"
+      - "[BODY] == pat(*id=\"app\"*)"
 
   - name: postgres
     group: storage

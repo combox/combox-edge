@@ -68,59 +68,14 @@ map $host $web_upstream_name {
   ${EDGE_APP_DOMAIN} app_upstream;
 }
 
-map "" $edge_maintenance_mode {
-  default "${EDGE_MAINTENANCE_MODE}";
-}
-
-map $host $edge_maintenance_host {
-  default 0;
-  ${EDGE_APP_DOMAIN} 1;
-  ${EDGE_API_DOMAIN} 1;
-}
-
-map "$edge_maintenance_mode:$edge_maintenance_host" $edge_maintenance_enabled {
-  default 0;
-  "~^true:1$" 1;
+map $http_origin $api_cors_allow_origin {
+  default "";
+  "~^https://(${EDGE_APP_DOMAIN}|${EDGE_API_DOMAIN})(:[0-9]+)?$" $http_origin;
 }
 
 map $http_origin $api_private_cors_allow_origin {
   default "";
   "~${EDGE_PRIVATE_CORS_ORIGIN_REGEX}" $http_origin;
-}
-
-map $http_origin $api_public_cors_allow_origin_matched {
-  default "";
-  "~${EDGE_PUBLIC_CORS_ORIGIN_REGEX}" $http_origin;
-}
-
-map "" $edge_public_cors_allow_any {
-  default "${EDGE_PUBLIC_CORS_ALLOW_ANY}";
-}
-
-map "$edge_public_cors_allow_any:$api_public_cors_allow_origin_matched" $api_public_cors_allow_origin {
-  default "";
-  "~^true:.*$" "*";
-  "~^false:(.+)$" "$1";
-}
-
-map "$http_origin|$api_private_cors_allow_origin" $api_private_cors_forbidden {
-  default 0;
-  "~^https?://.+\\|$" 1;
-}
-
-map "$http_origin|$api_public_cors_allow_origin" $api_public_cors_forbidden {
-  default 0;
-  "~^https?://.+\\|$" 1;
-}
-
-map "$request_method|$api_private_cors_allow_origin" $api_private_cors_preflight_forbidden {
-  default 0;
-  "~^OPTIONS\\|$" 1;
-}
-
-map "$request_method|$api_public_cors_allow_origin" $api_public_cors_preflight_forbidden {
-  default 0;
-  "~^OPTIONS\\|$" 1;
 }
 
 map "" $api_private_cors_allow_methods {
@@ -129,6 +84,16 @@ map "" $api_private_cors_allow_methods {
 
 map "" $api_private_cors_allow_headers {
   default "${EDGE_PRIVATE_CORS_ALLOW_HEADERS}";
+}
+
+map $http_origin $api_public_cors_allow_origin {
+  default "";
+  "~${EDGE_PUBLIC_CORS_ORIGIN_REGEX}" $http_origin;
+}
+
+map "${EDGE_MAINTENANCE_MODE}" $edge_maintenance_enabled {
+  default 0;
+  "~*^(1|true|yes|on)$" 1;
 }
 
 map "" $api_public_cors_allow_methods {
@@ -590,13 +555,6 @@ server {
   }
 
   location /api/private/ {
-    if ($edge_maintenance_enabled = 1) {
-      return 302 $scheme://$http_host/maintenance/;
-    }
-
-    if ($api_private_cors_forbidden = 1) { return 403; }
-    if ($api_private_cors_preflight_forbidden = 1) { return 403; }
-
     if ($request_method = OPTIONS) {
       add_header Access-Control-Allow-Origin $api_private_cors_allow_origin always;
       add_header Access-Control-Allow-Credentials "true" always;
@@ -651,13 +609,6 @@ server {
   }
 
   location /api/public/ {
-    if ($edge_maintenance_enabled = 1) {
-      return 302 $scheme://$http_host/maintenance/;
-    }
-
-    if ($api_public_cors_forbidden = 1) { return 403; }
-    if ($api_public_cors_preflight_forbidden = 1) { return 403; }
-
     if ($request_method = OPTIONS) {
       add_header Access-Control-Allow-Origin $api_public_cors_allow_origin always;
       add_header Access-Control-Allow-Private-Network "true" always;
@@ -734,12 +685,6 @@ server {
   }
 
   location = /api/private/v1/ws {
-    if ($edge_maintenance_enabled = 1) {
-      return 302 $scheme://$http_host/maintenance/;
-    }
-
-    if ($api_private_cors_forbidden = 1) { return 403; }
-
     proxy_pass https://backend_upstream;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
