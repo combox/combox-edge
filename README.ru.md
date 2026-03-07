@@ -309,11 +309,6 @@ docker compose --env-file .env logs -f nginx
 - Скрипты `postgres/init` выполняются только при первом создании свежего volume.
 - Путь админки PostgreSQL всегда `/tools/db/`, а контейнер выбирается через profile (`admin-pgweb` или `admin-pgadmin`).
 
-## Примечания
-
-- Используй один compose-файл (`docker-compose.yml`), чтобы не было рассинхронизаций конфигов.
-- Пользовательские сообщения/лейблы держи в `strings/` и избегай хардкода в edge-скриптах/шаблонах.
-
 ## License
 
 <a href="./LICENSE">
