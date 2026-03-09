@@ -56,6 +56,36 @@
 
 `/api/private/v1/*` предназначено для авторизованных запросов и требует `Authorization: Bearer <access_token>` (кроме эндпоинтов авторизации и `/api/private/v1/ws`).
 
+## Browser Protection
+
+Edge может ставить Anubis перед браузерным web-трафиком, чтобы срезать нагрузку от scraper-ботов и не ломать API или мобильных клиентов.
+
+- `EDGE_BROWSER_PROTECTION_ENABLED=true` включает Anubis перед HTML и статическими browser route для app/site
+- `/api/private/*`, `/api/public/*`, `/ws/*`, `/api/private/v1/ws`, `/chat-media/*` и admin/tool маршруты обходят Anubis
+- трафик приложения защищает `anubis-app`
+- маркетинговый/site трафик защищает `anubis-site`
+
+Полезные env-переменные:
+
+- `EDGE_WEB_RATE_LIMIT_RPS`
+- `EDGE_WEB_RATE_LIMIT_BURST`
+- `EDGE_APP_ANUBIS_DIFFICULTY`
+- `EDGE_SITE_ANUBIS_DIFFICULTY`
+- `EDGE_APP_ANUBIS_OG_EXPIRY_TIME`
+- `EDGE_SITE_ANUBIS_OG_EXPIRY_TIME`
+- `EDGE_APP_ANUBIS_SERVE_ROBOTS_TXT`
+- `EDGE_SITE_ANUBIS_SERVE_ROBOTS_TXT`
+
+Anubis нужно держать только на web-слое. Для API всё равно нужны обычные rate limits, auth checks и backend-защита от abuse.
+
+Рекомендуемый усиленный профиль:
+
+- держать `EDGE_BROWSER_PROTECTION_ENABLED=true`
+- поднять сложность app до `6` или `7`
+- поднять сложность site до `8+` для публичных маркетинговых страниц
+- сократить время жизни challenge до `15m`-`30m`
+- держать отдельный browser rate limit ниже API-лимитов, чтобы burst от scraper-ботов резался ещё до app/site upstream
+
 ## Структура репозитория
 
 - Compose: `docker-compose.yml`

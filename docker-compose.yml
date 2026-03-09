@@ -17,6 +17,10 @@ services:
     depends_on:
       strings-validate:
         condition: service_completed_successfully
+      anubis-app:
+        condition: service_started
+      anubis-site:
+        condition: service_started
       tls-init:
         condition: service_completed_successfully
       postgres:
@@ -56,6 +60,9 @@ services:
 
       EDGE_RATE_LIMIT_RPS: ${EDGE_RATE_LIMIT_RPS:-30r/s}
       EDGE_RATE_LIMIT_BURST: ${EDGE_RATE_LIMIT_BURST:-60}
+      EDGE_WEB_RATE_LIMIT_RPS: ${EDGE_WEB_RATE_LIMIT_RPS:-12r/s}
+      EDGE_WEB_RATE_LIMIT_BURST: ${EDGE_WEB_RATE_LIMIT_BURST:-48}
+      EDGE_BROWSER_PROTECTION_ENABLED: ${EDGE_BROWSER_PROTECTION_ENABLED:-true}
       EDGE_DEFAULT_LOCALE: ${EDGE_DEFAULT_LOCALE:-en}
       EDGE_DNS_RESOLVER: ${EDGE_DNS_RESOLVER:-127.0.0.11}
       EDGE_TLS_DOMAIN: ${EDGE_TLS_DOMAIN:-localhost}
@@ -97,6 +104,46 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+
+  anubis-app:
+    image: ghcr.io/techarohq/anubis:latest
+    container_name: combox-edge-anubis-app
+    restart: unless-stopped
+    depends_on:
+      strings-validate:
+        condition: service_completed_successfully
+    environment:
+      BIND: :8923
+      TARGET: http://nginx:8088
+      COOKIE_DOMAIN: ${EDGE_APP_DOMAIN:-app.localhost}
+      REDIRECT_DOMAINS: ${EDGE_APP_DOMAIN:-app.localhost}
+      DIFFICULTY: ${EDGE_APP_ANUBIS_DIFFICULTY:-6}
+      OG_PASSTHROUGH: ${EDGE_APP_ANUBIS_OG_PASSTHROUGH:-true}
+      OG_EXPIRY_TIME: ${EDGE_APP_ANUBIS_OG_EXPIRY_TIME:-30m}
+      OG_CACHE_CONSIDER_HOST: ${EDGE_APP_ANUBIS_OG_CACHE_CONSIDER_HOST:-true}
+      SERVE_ROBOTS_TXT: ${EDGE_APP_ANUBIS_SERVE_ROBOTS_TXT:-false}
+    expose:
+      - "8923"
+
+  anubis-site:
+    image: ghcr.io/techarohq/anubis:latest
+    container_name: combox-edge-anubis-site
+    restart: unless-stopped
+    depends_on:
+      strings-validate:
+        condition: service_completed_successfully
+    environment:
+      BIND: :8923
+      TARGET: http://nginx:8089
+      COOKIE_DOMAIN: ${EDGE_SITE_DOMAIN:-localhost}
+      REDIRECT_DOMAINS: ${EDGE_SITE_DOMAIN:-localhost}
+      DIFFICULTY: ${EDGE_SITE_ANUBIS_DIFFICULTY:-8}
+      OG_PASSTHROUGH: ${EDGE_SITE_ANUBIS_OG_PASSTHROUGH:-true}
+      OG_EXPIRY_TIME: ${EDGE_SITE_ANUBIS_OG_EXPIRY_TIME:-30m}
+      OG_CACHE_CONSIDER_HOST: ${EDGE_SITE_ANUBIS_OG_CACHE_CONSIDER_HOST:-true}
+      SERVE_ROBOTS_TXT: ${EDGE_SITE_ANUBIS_SERVE_ROBOTS_TXT:-false}
+    expose:
+      - "8923"
 
   status:
     image: ghcr.io/twin/gatus:stable

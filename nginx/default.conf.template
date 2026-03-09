@@ -96,6 +96,22 @@ map "${EDGE_MAINTENANCE_MODE}" $edge_maintenance_enabled {
   "~*^(1|true|yes|on)$" 1;
 }
 
+map "${EDGE_BROWSER_PROTECTION_ENABLED}" $edge_browser_protection_enabled {
+  default 0;
+  "~*^(1|true|yes|on)$" 1;
+}
+
+map $edge_browser_protection_enabled $site_browser_guard_target {
+  default "";
+  1 "http://anubis-site:8923";
+}
+
+map "$edge_browser_protection_enabled:$host" $root_browser_guard_target {
+  default "";
+  "~^1:${EDGE_SITE_DOMAIN}$" "http://anubis-site:8923";
+  "~^1:.*$" "http://anubis-app:8923";
+}
+
 map "" $api_public_cors_allow_methods {
   default "${EDGE_PUBLIC_CORS_ALLOW_METHODS}";
 }
@@ -117,6 +133,7 @@ geo $edge_is_vpn {
 }
 
 limit_req_zone $binary_remote_addr zone=api_limit:10m rate=${EDGE_RATE_LIMIT_RPS};
+limit_req_zone $binary_remote_addr zone=web_limit:10m rate=${EDGE_WEB_RATE_LIMIT_RPS};
 
 log_format edge_json escape=json
   '{"time":"$time_iso8601","remote_addr":"$remote_addr","request_id":"$request_id",'
@@ -189,6 +206,8 @@ server {
   error_page 502 /errors/502.html;
   error_page 503 /errors/503.html;
   error_page 504 /errors/504.html;
+  error_page 418 = @root_browser_guard;
+  error_page 419 = @site_browser_guard;
 
   # Error HTML pages are internal, but their assets (css/js) must be public.
   location = /errors/403.html { root /usr/share/nginx/html; internal; }
@@ -743,6 +762,12 @@ server {
   }
 
   location /site/ {
+    limit_req zone=web_limit burst=${EDGE_WEB_RATE_LIMIT_BURST} nodelay;
+
+    if ($site_browser_guard_target != "") {
+      return 419;
+    }
+
     proxy_intercept_errors on;
     proxy_pass https://site_upstream/;
     proxy_http_version 1.1;
@@ -772,6 +797,12 @@ server {
       return 404;
     }
 
+    limit_req zone=web_limit burst=${EDGE_WEB_RATE_LIMIT_BURST} nodelay;
+
+    if ($root_browser_guard_target != "") {
+      return 418;
+    }
+
     proxy_intercept_errors on;
     proxy_pass https://$web_upstream_name;
     proxy_http_version 1.1;
@@ -791,6 +822,100 @@ server {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Client-Locale $edge_locale;
+  }
+
+  location @site_browser_guard {
+    proxy_pass $site_browser_guard_target;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
+  location @root_browser_guard {
+    proxy_pass $root_browser_guard_target;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+
+server {
+  listen 8088;
+  server_name _;
+  resolver ${EDGE_DNS_RESOLVER} ipv6=off valid=10s;
+
+  location / {
+    proxy_intercept_errors on;
+    proxy_pass https://app_upstream;
+    proxy_http_version 1.1;
+    proxy_ssl_server_name on;
+    proxy_ssl_name ${EDGE_APP_TLS_SNI};
+    proxy_ssl_verify ${EDGE_UPSTREAM_TLS_VERIFY};
+    proxy_ssl_verify_depth ${EDGE_UPSTREAM_TLS_VERIFY_DEPTH};
+    proxy_ssl_trusted_certificate ${EDGE_UPSTREAM_TLS_TRUSTED_CA};
+    proxy_ssl_certificate ${EDGE_UPSTREAM_TLS_CLIENT_CERT};
+    proxy_ssl_certificate_key ${EDGE_UPSTREAM_TLS_CLIENT_KEY};
+
+    proxy_next_upstream error timeout http_502 http_503 http_504;
+    proxy_next_upstream_tries ${EDGE_UPSTREAM_TRIES};
+    proxy_next_upstream_timeout ${EDGE_UPSTREAM_TRIES_TIMEOUT};
+
+    proxy_set_header Host ${EDGE_APP_DOMAIN};
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Client-Locale $edge_locale;
+  }
+}
+
+server {
+  listen 8089;
+  server_name _;
+  resolver ${EDGE_DNS_RESOLVER} ipv6=off valid=10s;
+
+  location /site/ {
+    rewrite ^/site/(.*)$ /$1 break;
+    proxy_intercept_errors on;
+    proxy_pass https://site_upstream/;
+    proxy_http_version 1.1;
+    proxy_ssl_server_name on;
+    proxy_ssl_name ${EDGE_SITE_TLS_SNI};
+    proxy_ssl_verify ${EDGE_UPSTREAM_TLS_VERIFY};
+    proxy_ssl_verify_depth ${EDGE_UPSTREAM_TLS_VERIFY_DEPTH};
+    proxy_ssl_trusted_certificate ${EDGE_UPSTREAM_TLS_TRUSTED_CA};
+    proxy_ssl_certificate ${EDGE_UPSTREAM_TLS_CLIENT_CERT};
+    proxy_ssl_certificate_key ${EDGE_UPSTREAM_TLS_CLIENT_KEY};
+
+    proxy_next_upstream error timeout http_502 http_503 http_504;
+    proxy_next_upstream_tries ${EDGE_UPSTREAM_TRIES};
+    proxy_next_upstream_timeout ${EDGE_UPSTREAM_TRIES_TIMEOUT};
+
+    proxy_set_header Host ${EDGE_SITE_DOMAIN};
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Client-Locale $edge_locale;
+  }
+
+  location / {
+    proxy_intercept_errors on;
+    proxy_pass https://site_upstream;
+    proxy_http_version 1.1;
+    proxy_ssl_server_name on;
+    proxy_ssl_name ${EDGE_SITE_TLS_SNI};
+    proxy_ssl_verify ${EDGE_UPSTREAM_TLS_VERIFY};
+    proxy_ssl_verify_depth ${EDGE_UPSTREAM_TLS_VERIFY_DEPTH};
+    proxy_ssl_trusted_certificate ${EDGE_UPSTREAM_TLS_TRUSTED_CA};
+    proxy_ssl_certificate ${EDGE_UPSTREAM_TLS_CLIENT_CERT};
+    proxy_ssl_certificate_key ${EDGE_UPSTREAM_TLS_CLIENT_KEY};
+
+    proxy_next_upstream error timeout http_502 http_503 http_504;
+    proxy_next_upstream_tries ${EDGE_UPSTREAM_TRIES};
+    proxy_next_upstream_timeout ${EDGE_UPSTREAM_TRIES_TIMEOUT};
+
+    proxy_set_header Host ${EDGE_SITE_DOMAIN};
+    proxy_set_header X-Forwarded-Proto https;
     proxy_set_header X-Client-Locale $edge_locale;
   }
 }

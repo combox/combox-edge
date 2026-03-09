@@ -54,6 +54,36 @@ Headers:
 
 - `X-Client-Locale` is derived from `Accept-Language` (fallback `EDGE_DEFAULT_LOCALE`).
 
+## Browser Protection
+
+Edge can place Anubis in front of browser-facing web traffic to slow down scraper floods without breaking API and mobile clients.
+
+- `EDGE_BROWSER_PROTECTION_ENABLED=true` enables Anubis in front of app/site HTML and static browser routes
+- `/api/private/*`, `/api/public/*`, `/ws/*`, `/api/private/v1/ws`, `/chat-media/*`, and admin/tool routes bypass Anubis
+- app traffic is protected by `anubis-app`
+- marketing/site traffic is protected by `anubis-site`
+
+Useful env knobs:
+
+- `EDGE_WEB_RATE_LIMIT_RPS`
+- `EDGE_WEB_RATE_LIMIT_BURST`
+- `EDGE_APP_ANUBIS_DIFFICULTY`
+- `EDGE_SITE_ANUBIS_DIFFICULTY`
+- `EDGE_APP_ANUBIS_OG_EXPIRY_TIME`
+- `EDGE_SITE_ANUBIS_OG_EXPIRY_TIME`
+- `EDGE_APP_ANUBIS_SERVE_ROBOTS_TXT`
+- `EDGE_SITE_ANUBIS_SERVE_ROBOTS_TXT`
+
+Keep browser protection on the web layer only. API abuse control still needs normal rate limiting, auth checks, and backend-side protections.
+
+Recommended hardened profile:
+
+- keep `EDGE_BROWSER_PROTECTION_ENABLED=true`
+- raise app difficulty to `6` or `7`
+- raise site difficulty to `8` or higher for public marketing pages
+- shorten challenge lifetime to `15m` to `30m`
+- keep a dedicated browser rate limit lower than API rate limits so scraper bursts are throttled before they reach app/site upstreams
+
 ## Upstreams: multi-machine + mTLS
 
 Edge supports load balancing across many upstream instances (including servers in different countries).
